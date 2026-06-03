@@ -3,9 +3,7 @@
 
 #include <iostream>
 
-void init(GLFWwindow *window);
-void renderLoop(GLFWwindow *window);
-void shutdown(GLFWwindow *window);
+#include "scene.cpp"
 
 int main() {
   if (!glfwInit()) {

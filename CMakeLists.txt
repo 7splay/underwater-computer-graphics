@@ -15,10 +15,7 @@ find_package(GLEW   REQUIRED)
 find_package(assimp REQUIRED)
 find_package(glm    REQUIRED)
 
-file(GLOB_RECURSE PROJECT_SOURCES CONFIGURE_DEPENDS
-     "${CMAKE_SOURCE_DIR}/src/*.cpp")
-
-add_executable(underwater-computer-graphics ${PROJECT_SOURCES})
+add_executable(underwater-computer-graphics src/main.cpp)
 
 target_link_libraries(underwater-computer-graphics PRIVATE
     OpenGL::GL
