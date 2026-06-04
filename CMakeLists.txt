@@ -24,6 +24,13 @@ target_link_libraries(underwater-computer-graphics PRIVATE
     assimp::assimp
     glm::glm)
 
+if(APPLE)
+    target_link_libraries(underwater-computer-graphics PRIVATE
+        "-framework CoreGraphics"
+        "-framework ImageIO"
+        "-framework CoreFoundation")
+endif()
+
 add_custom_command(TARGET underwater-computer-graphics POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:underwater-computer-graphics>/shaders)

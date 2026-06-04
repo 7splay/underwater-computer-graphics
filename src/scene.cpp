@@ -16,6 +16,7 @@ std::vector<Renderable> renderables;
 GLint viewLocation = -1;
 GLint projLocation = -1;
 GLint modelLocation = -1;
+GLint textureLocation = -1;
 
 void framebuffer_size_callback(GLFWwindow *, int width, int height) {
   glViewport(0, 0, width, height);
@@ -30,6 +31,12 @@ void initModel() {
   viewLocation = glGetUniformLocation(program, "uView");
   projLocation = glGetUniformLocation(program, "uProjection");
   modelLocation = glGetUniformLocation(program, "uModel");
+  textureLocation = glGetUniformLocation(program, "uTexture");
+
+  if (textureLocation >= 0) {
+    glUseProgram(program);
+    glUniform1i(textureLocation, 0);
+  }
 }
 
 void init(GLFWwindow *window) {
@@ -72,6 +79,8 @@ void renderScene(GLFWwindow *window) {
                          glm::value_ptr(renderable.model));
     }
 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderable.texture);
     glBindVertexArray(renderable.VAO);
     glDrawElements(GL_TRIANGLES, renderable.indexCount, GL_UNSIGNED_INT,
                    nullptr);

@@ -8,6 +8,11 @@
 
 #include <algorithm>
 #include <cstddef>
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreGraphics/CoreGraphics.h>
+#include <ImageIO/ImageIO.h>
+#endif
 #include <filesystem>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -20,6 +25,7 @@ struct Renderable {
   GLuint VAO = 0;
   GLuint VBO = 0;
   GLuint EBO = 0;
+  GLuint texture = 0;
   GLsizei indexCount = 0;
   glm::mat4 model = glm::mat4(1.0f);
 };
@@ -27,7 +33,169 @@ struct Renderable {
 struct ModelVertex {
   float position[3];
   float normal[3];
+  float texCoord[2];
 };
+
+inline std::string toLowerCopy(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+inline std::filesystem::path resolveCoralTexturePath(const std::filesystem::path &modelPath) {
+  const std::string stem = toLowerCopy(modelPath.stem().string());
+  const std::filesystem::path imgRoot = modelPath.parent_path().parent_path() / "img";
+
+  auto tryPaths = [&](std::initializer_list<std::filesystem::path> candidates) {
+    for (const auto &candidate : candidates) {
+      if (std::filesystem::exists(candidate)) {
+        return candidate;
+      }
+    }
+    return std::filesystem::path{};
+  };
+
+  if (stem == "coral1") {
+    return tryPaths({imgRoot / "coral_1" / "coral1Basecolor.jpg",
+                     imgRoot / "coral_1" / "coral1Diffuse.jpg"});
+  }
+  if (stem == "coral2") {
+    return tryPaths({imgRoot / "coral_2" / "Coral2Base.jpg",
+                     imgRoot / "coral_2" / "Coral2Diffuse.jpg"});
+  }
+  if (stem == "coral3") {
+    return tryPaths({imgRoot / "coral_3" / "CoralBase.jpg",
+                     imgRoot / "coral_3" / "Coral3Diffuse.jpg"});
+  }
+  if (stem == "coral4") {
+    return tryPaths({imgRoot / "coral_4" / "Coral4Base.jpg",
+                     imgRoot / "coral_4" / "Coral4Diffuse.jpg"});
+  }
+  if (stem == "coral5") {
+    return tryPaths({imgRoot / "coral_5" / "Coral5Base.jpg",
+                     imgRoot / "coral_5" / "Coral5Diffuse.jpg"});
+  }
+  if (stem == "coral6") {
+    return tryPaths({imgRoot / "coral_6" / "Coral6Base.jpg",
+                     imgRoot / "coral_6" / "Coral6Diffuse.jpg"});
+  }
+  if (stem == "coral7") {
+    return tryPaths({imgRoot / "coral_7" / "Coral7Base.jpg",
+                     imgRoot / "coral_7" / "Coral7Diffuse.jpg"});
+  }
+  if (stem == "coral8") {
+    return tryPaths({imgRoot / "coral_8" / "Coral8Base.jpg",
+                     imgRoot / "coral_8" / "Coral8Diffuse.jpg"});
+  }
+  if (stem == "coral9") {
+    return tryPaths({imgRoot / "coral_9" / "Coral9Base.jpg",
+                     imgRoot / "coral_9" / "Coral9Diffuse.jpg"});
+  }
+  if (stem == "coral10") {
+    return tryPaths({imgRoot / "coral_10" / "Coral10Base.jpg",
+                     imgRoot / "coral_10" / "Coral10Diffuse.jpg"});
+  }
+  if (stem == "coral11") {
+    return tryPaths({imgRoot / "coral_11" / "Coral11Base.jpg",
+                     imgRoot / "coral_11" / "Coral11Diffuse.jpg"});
+  }
+
+  if (stem == "ship") {
+    return tryPaths({imgRoot / "ship" / "ship.png",
+                     imgRoot / "ship" / "texture.png"});
+  }
+
+  if (stem == "shark") {
+    return tryPaths({imgRoot / "shark" / "Nurse_Shark_Quad_Diffuse.png",
+                     imgRoot / "shark" / "Nurse_Shark_Tris_Diffuse.png"});
+  }
+
+  if (stem == "fish") {
+    return tryPaths({imgRoot / "fish" / "Tailor_low_DefaultMaterial_BaseColor.png",
+                     imgRoot / "fish" / "Tailor_low_DefaultMaterial_BaseColor.png",
+                     imgRoot / "fish_DefaultMaterial_BaseColor.png",
+                     imgRoot / "fish" / "texture.png"});
+  }
+
+  if (stem == "fishes") {
+    return tryPaths({imgRoot / "fishes" / "Striped-Dottyback-Pseudochromis-sankeyi.jpg",
+                     imgRoot / "fishes" / "fishes.jpg"});
+  }
+
+  return {};
+}
+
+#ifdef __APPLE__
+inline GLuint loadTextureFromFile(const std::filesystem::path &texturePath) {
+  if (!std::filesystem::exists(texturePath)) {
+    return 0;
+  }
+
+  CFStringRef pathString = CFStringCreateWithCString(
+      kCFAllocatorDefault, texturePath.string().c_str(), kCFStringEncodingUTF8);
+  if (pathString == nullptr) {
+    return 0;
+  }
+
+  CFURLRef url = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, pathString,
+                                              kCFURLPOSIXPathStyle, false);
+  CFRelease(pathString);
+  if (url == nullptr) {
+    return 0;
+  }
+
+  CGImageSourceRef source = CGImageSourceCreateWithURL(url, nullptr);
+  CFRelease(url);
+  if (source == nullptr) {
+    return 0;
+  }
+
+  CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, nullptr);
+  CFRelease(source);
+  if (image == nullptr) {
+    return 0;
+  }
+
+  const size_t width = CGImageGetWidth(image);
+  const size_t height = CGImageGetHeight(image);
+  if (width == 0 || height == 0) {
+    CGImageRelease(image);
+    return 0;
+  }
+
+  std::vector<unsigned char> pixels(width * height * 4u, 0u);
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+  CGContextRef context = CGBitmapContextCreate(
+      pixels.data(), width, height, 8, width * 4u, colorSpace,
+      kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(colorSpace);
+  if (context == nullptr) {
+    CGImageRelease(image);
+    return 0;
+  }
+
+  CGContextTranslateCTM(context, 0.0f, static_cast<CGFloat>(height));
+  CGContextScaleCTM(context, 1.0f, -1.0f);
+  CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+  CGContextRelease(context);
+  CGImageRelease(image);
+
+  GLuint texture = 0;
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(width),
+               static_cast<GLsizei>(height), 0, GL_RGBA, GL_UNSIGNED_BYTE,
+               pixels.data());
+  glGenerateMipmap(GL_TEXTURE_2D);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  return texture;
+}
+#endif
 
 inline std::vector<ModelVertex> extractVertices(aiMesh *mesh) {
   std::vector<ModelVertex> meshVertices;
@@ -47,6 +215,14 @@ inline std::vector<ModelVertex> extractVertices(aiMesh *mesh) {
       vertex.normal[0] = 0.0f;
       vertex.normal[1] = 0.0f;
       vertex.normal[2] = 1.0f;
+    }
+
+    if (mesh->HasTextureCoords(0) && mesh->mTextureCoords[0] != nullptr) {
+      vertex.texCoord[0] = mesh->mTextureCoords[0][i].x;
+      vertex.texCoord[1] = mesh->mTextureCoords[0][i].y;
+    } else {
+      vertex.texCoord[0] = vertex.position[0] * 0.5f + 0.5f;
+      vertex.texCoord[1] = vertex.position[2] * 0.5f + 0.5f;
     }
 
     meshVertices.push_back(vertex);
@@ -104,8 +280,38 @@ inline bool createRenderableFromMesh(aiMesh *mesh, const glm::mat4 &modelMatrix,
       reinterpret_cast<void *>(offsetof(ModelVertex, normal)));
   glEnableVertexAttribArray(1);
 
+  glVertexAttribPointer(
+      2, 2, GL_FLOAT, GL_FALSE, sizeof(ModelVertex),
+      reinterpret_cast<void *>(offsetof(ModelVertex, texCoord)));
+  glEnableVertexAttribArray(2);
+
   glBindVertexArray(0);
   return true;
+}
+
+inline GLuint textureForModel(const std::filesystem::path &modelPath) {
+#ifdef __APPLE__
+  std::filesystem::path texturePath = resolveCoralTexturePath(modelPath);
+  if (!texturePath.empty()) {
+    GLuint texture = loadTextureFromFile(texturePath);
+    if (texture != 0) {
+      return texture;
+    }
+  }
+#endif
+
+  GLuint texture = 0;
+  unsigned char pixels[4] = {255u, 255u, 255u, 255u};
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+               pixels);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  return texture;
 }
 
 inline std::vector<Renderable> loadModelFile(const std::filesystem::path &path,
@@ -134,6 +340,7 @@ inline std::vector<Renderable> loadModelFile(const std::filesystem::path &path,
     Renderable renderable;
     if (createRenderableFromMesh(scene->mMeshes[meshIndex], modelMatrix,
                                  renderable)) {
+      renderable.texture = textureForModel(path);
       loadedRenderables.push_back(renderable);
     }
   }
@@ -285,6 +492,7 @@ inline std::vector<Renderable> loadSceneModels() {
 
 inline void destroyRenderables(std::vector<Renderable> &renderables) {
   for (Renderable &renderable : renderables) {
+    glDeleteTextures(1, &renderable.texture);
     glDeleteBuffers(1, &renderable.EBO);
     glDeleteBuffers(1, &renderable.VBO);
     glDeleteVertexArrays(1, &renderable.VAO);
