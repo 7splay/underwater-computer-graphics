@@ -4,17 +4,17 @@
 
 ## Chosen methods
 
-- **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing; each instance picks one of three LOD tiers (HIGH / MED / LOW billboard) based on camera distance.
-- **B14 — Simple creature animation state machine:** each fish has `SWIM` / `FLEE` / `CHASE` states with transitions driven by flashlight ray hits and bait proximity.
+- [ ] **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing; each instance picks one of three LOD tiers (HIGH / MED / LOW billboard) based on camera distance.
+- [ ] **B14 — Simple creature animation state machine:** each fish has `SWIM` / `FLEE` / `CHASE` states with transitions driven by flashlight ray hits and bait proximity.
 
 ## Mandatory methods
 
-- **Normal mapping** — sand seabed and coral surfaces, tangent-space TBN.
-- **PBR lighting** — metallic/roughness materials for sand, coral, rock, fish.
-- **Quaternion camera control** — first-person diver camera, no gimbal lock.
-- **Shadow mapping** — flashlight spotlight depth map with PCF.
-- **Parallel Transport Frames** — stable fish orientation along Catmull-Rom patrol splines.
-- **Underwater skybox/cubemap** — blue-green gradient, bright above, dark abyss below.
+- [ ] **Normal mapping** — sand seabed and coral surfaces, tangent-space TBN.
+- [ ] **PBR lighting** — metallic/roughness materials for sand, coral, rock, fish.
+- [x] **Quaternion camera control** — first-person diver camera with quaternion mouse look, pitch clamp, WASD/vertical movement, and smoothed velocity.
+- [ ] **Shadow mapping** — flashlight spotlight depth map with PCF.
+- [ ] **Parallel Transport Frames** — stable fish orientation along Catmull-Rom patrol splines.
+- [ ] **Underwater skybox/cubemap** — blue-green gradient, bright above, dark abyss below.
 
 ## Build and run instructions
 ### MacOS
