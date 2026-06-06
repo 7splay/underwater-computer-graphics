@@ -5,6 +5,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <cmath>
+
 inline glm::quat cameraOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 inline glm::vec3 cameraPosition = glm::vec3(0.0f, 1.5f, 6.0f);
 
@@ -12,15 +14,12 @@ inline float yawAngle = 0.0f;
 inline float pitchAngle = 0.0f;
 inline float pitchLimit = glm::radians(89.0f);
 
+inline glm::vec3 cameraVelocity = glm::vec3(0.0f);
+inline float movementSmoothness = 2.0f;
+
 inline glm::mat4 getViewMatrix() {
   return glm::mat4_cast(glm::conjugate(cameraOrientation)) *
          glm::translate(glm::mat4(1.0f), -cameraPosition);
-}
-
-inline void moveCamera(glm::vec3 direction, float amount,
-                       bool independent = false) {
-  cameraPosition += independent ? amount * direction
-                                : amount * (cameraOrientation * direction);
 }
 
 inline void rotateCamera(float yaw, float pitch, float amount) {
@@ -30,8 +29,26 @@ inline void rotateCamera(float yaw, float pitch, float amount) {
   pitchAngle = glm::clamp(pitchAngle, -pitchLimit, pitchLimit);
 
   auto rotationX =
-      glm::quat(cos(pitchAngle / 2.0f), sin(pitchAngle / 2.0f), 0.0f, 0.0f);
+      glm::quat(std::cos(pitchAngle / 2.0f), std::sin(pitchAngle / 2.0f),
+                0.0f, 0.0f);
   auto rotationY =
-      glm::quat(cos(yawAngle / 2.0f), 0.0f, sin(yawAngle / 2.0f), 0.0f);
+      glm::quat(std::cos(yawAngle / 2.0f), 0.0f, std::sin(yawAngle / 2.0f),
+                0.0f);
   cameraOrientation = glm::normalize(rotationY * rotationX);
+}
+
+inline void updateCameraMovement(glm::vec3 inputDirection,
+                                 glm::vec3 independentInputDirection,
+                                 float speed, float deltaTime) {
+  glm::vec3 desiredDirection =
+      cameraOrientation * inputDirection + independentInputDirection;
+
+  if (glm::length(desiredDirection) > 0.0f) {
+    desiredDirection = glm::normalize(desiredDirection);
+  }
+
+  glm::vec3 desiredVelocity = desiredDirection * speed;
+  float alpha = 1.0f - std::exp(-movementSmoothness * deltaTime);
+  cameraVelocity = glm::mix(cameraVelocity, desiredVelocity, alpha);
+  cameraPosition += cameraVelocity * deltaTime;
 }

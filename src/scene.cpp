@@ -27,7 +27,7 @@ GLint textureLocation = -1;
 float deltaTime = 0.0f;
 float lastTime = 0.0f;
 
-float cameraSpeed = 3.0f;
+float cameraSpeed = 5.0f;
 
 float mouseSensitivity = 0.003f;
 bool firstMouse = true;
@@ -70,14 +70,13 @@ void init(GLFWwindow *window) {
 }
 
 void renderScene(GLFWwindow *window) {
-  float time = glfwGetTime();
-  deltaTime = time - lastTime;
-  lastTime = time;
-
   glClearColor(0.05f, 0.15f, 0.25f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   glfwGetFramebufferSize(window, &width, &height);
+  if (height == 0) {
+    height = 1;
+  }
   glUseProgram(program);
 
   glm::mat4 view = getViewMatrix();
@@ -113,24 +112,29 @@ void processInput(GLFWwindow *window) {
     glfwSetWindowShouldClose(window, true);
   }
 
+  glm::vec3 inputDirection = glm::vec3(0.0f);
+  glm::vec3 independentInputDirection = glm::vec3(0.0f);
+
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-    moveCamera(glm::vec3(0.0f, 0.0f, -1.0f), cameraSpeed * deltaTime);
+    inputDirection += glm::vec3(0.0f, 0.0f, -1.0f);
   }
   if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-    moveCamera(glm::vec3(0.0f, 0.0f, 1.0f), cameraSpeed * deltaTime);
+    inputDirection += glm::vec3(0.0f, 0.0f, 1.0f);
   }
   if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-    moveCamera(glm::vec3(-1.0f, 0.0f, 0.0f), cameraSpeed * deltaTime);
+    inputDirection += glm::vec3(-1.0f, 0.0f, 0.0f);
   }
   if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-    moveCamera(glm::vec3(1.0f, 0.0f, 0.0f), cameraSpeed * deltaTime);
+    inputDirection += glm::vec3(1.0f, 0.0f, 0.0f);
   }
   if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-    moveCamera(glm::vec3(0.0f, 1.0f, 0.0f), cameraSpeed * deltaTime, true);
+    independentInputDirection += glm::vec3(0.0f, 1.0f, 0.0f);
   }
   if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-    moveCamera(glm::vec3(0.0f, -1.0f, 0.0f), cameraSpeed * deltaTime, true);
+    independentInputDirection += glm::vec3(0.0f, -1.0f, 0.0f);
   }
+  updateCameraMovement(inputDirection, independentInputDirection, cameraSpeed,
+                       deltaTime);
 }
 
 void processMouse(GLFWwindow *, double xPos, double yPos) {
@@ -154,7 +158,12 @@ void processMouse(GLFWwindow *, double xPos, double yPos) {
 }
 
 void renderLoop(GLFWwindow *window) {
+  lastTime = static_cast<float>(glfwGetTime());
   while (!glfwWindowShouldClose(window)) {
+    float time = static_cast<float>(glfwGetTime());
+    deltaTime = time - lastTime;
+    lastTime = time;
+
     processInput(window);
     renderScene(window);
     glfwPollEvents();
