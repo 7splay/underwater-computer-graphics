@@ -6,17 +6,34 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <cmath>
 #include <vector>
 
+#include "camera.hpp"
 #include "models.hpp"
 #include "shader.hpp"
 
+int width = 800;
+int height = 600;
+
 GLuint program = 0;
 std::vector<Renderable> renderables;
+
 GLint viewLocation = -1;
 GLint projLocation = -1;
 GLint modelLocation = -1;
 GLint textureLocation = -1;
+
+float deltaTime = 0.0f;
+float lastTime = 0.0f;
+
+float cameraSpeed = 3.0f;
+
+float mouseSensitivity = 0.003f;
+bool firstMouse = true;
+void processMouse(GLFWwindow *, double xPos, double yPos);
+float lastX = floor(width / 2.0f);
+float lastY = floor(height / 2.0f);
 
 void framebuffer_size_callback(GLFWwindow *, int width, int height) {
   glViewport(0, 0, width, height);
@@ -41,27 +58,29 @@ void initModel() {
 
 void init(GLFWwindow *window) {
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-  glViewport(0, 0, 800, 600);
+#ifdef __APPLE__
+  glViewport(0, 0, width * 2, height * 2); // account for retina display
+#else
+  glViewport(0, 0, width, height);
+#endif
 
   initModel();
+  glfwSetCursorPosCallback(window, processMouse);
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
 void renderScene(GLFWwindow *window) {
+  float time = glfwGetTime();
+  deltaTime = time - lastTime;
+  lastTime = time;
+
   glClearColor(0.05f, 0.15f, 0.25f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  int width = 0;
-  int height = 0;
   glfwGetFramebufferSize(window, &width, &height);
-  if (height == 0) {
-    height = 1;
-  }
-
   glUseProgram(program);
 
-  glm::mat4 view =
-      glm::lookAt(glm::vec3(0.0f, 1.5f, 6.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                  glm::vec3(0.0f, 1.0f, 0.0f));
+  glm::mat4 view = getViewMatrix();
   glm::mat4 projection = glm::perspective(
       glm::radians(35.0f),
       static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.0f);
@@ -93,6 +112,45 @@ void processInput(GLFWwindow *window) {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
   }
+
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+    moveCamera(glm::vec3(0.0f, 0.0f, -1.0f), cameraSpeed * deltaTime);
+  }
+  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+    moveCamera(glm::vec3(0.0f, 0.0f, 1.0f), cameraSpeed * deltaTime);
+  }
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+    moveCamera(glm::vec3(-1.0f, 0.0f, 0.0f), cameraSpeed * deltaTime);
+  }
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+    moveCamera(glm::vec3(1.0f, 0.0f, 0.0f), cameraSpeed * deltaTime);
+  }
+  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+    moveCamera(glm::vec3(0.0f, 1.0f, 0.0f), cameraSpeed * deltaTime, true);
+  }
+  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+    moveCamera(glm::vec3(0.0f, -1.0f, 0.0f), cameraSpeed * deltaTime, true);
+  }
+}
+
+void processMouse(GLFWwindow *, double xPos, double yPos) {
+  if (firstMouse) {
+    lastX = static_cast<float>(xPos);
+    lastY = static_cast<float>(yPos);
+    firstMouse = false;
+    return;
+  }
+  float deltaX = static_cast<float>(xPos) - lastX;
+  float deltaY = static_cast<float>(yPos) - lastY;
+  lastX = static_cast<float>(xPos);
+  lastY = static_cast<float>(yPos);
+
+  // ignore one-off spikes from the cursor-grab
+  if (std::abs(deltaX) > 200.0f || std::abs(deltaY) > 200.0f) {
+    return;
+  }
+
+  rotateCamera(-deltaX, -deltaY, mouseSensitivity);
 }
 
 void renderLoop(GLFWwindow *window) {
