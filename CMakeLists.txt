@@ -16,6 +16,17 @@ find_package(assimp REQUIRED)
 find_package(glm    REQUIRED)
 
 add_executable(underwater-computer-graphics src/main.cpp)
+add_executable(perlin src/PerlinNoiseExample.cpp)
+
+# IDE-only target: scene.cpp is included from main.cpp, but clangd needs its own
+# compile_commands entry with the correct include paths.
+add_library(scene_ide OBJECT src/scene.cpp)
+target_link_libraries(scene_ide PRIVATE
+    OpenGL::GL
+    glfw
+    GLEW::GLEW
+    assimp::assimp
+    glm::glm)
 
 target_link_libraries(underwater-computer-graphics PRIVATE
     OpenGL::GL
@@ -25,11 +36,17 @@ target_link_libraries(underwater-computer-graphics PRIVATE
     glm::glm)
 
 if(APPLE)
+    target_link_libraries(scene_ide PRIVATE
+        "-framework CoreGraphics"
+        "-framework ImageIO"
+        "-framework CoreFoundation")
     target_link_libraries(underwater-computer-graphics PRIVATE
         "-framework CoreGraphics"
         "-framework ImageIO"
         "-framework CoreFoundation")
 endif()
+
+target_link_libraries(perlin PRIVATE glm::glm)
 
 add_custom_command(TARGET underwater-computer-graphics POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
