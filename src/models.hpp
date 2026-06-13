@@ -26,6 +26,8 @@ struct Renderable {
   GLuint VBO = 0;
   GLuint EBO = 0;
   GLuint texture = 0;
+  GLuint normalTexture = 0;
+  bool useNormalMap = false;
   GLsizei indexCount = 0;
   glm::mat4 model = glm::mat4(1.0f);
 };
@@ -34,6 +36,7 @@ struct ModelVertex {
   float position[3];
   float normal[3];
   float texCoord[2];
+  float tangent[4];
 };
 
 inline std::string toLowerCopy(std::string value) {
@@ -121,6 +124,67 @@ inline std::filesystem::path resolveCoralTexturePath(const std::filesystem::path
   if (stem == "fishes") {
     return tryPaths({imgRoot / "fishes" / "Striped-Dottyback-Pseudochromis-sankeyi.jpg",
                      imgRoot / "fishes" / "fishes.jpg"});
+  }
+
+  return {};
+}
+
+inline std::filesystem::path resolveModelNormalTexturePath(
+    const std::filesystem::path &modelPath) {
+  const std::string stem = toLowerCopy(modelPath.stem().string());
+  const std::filesystem::path imgRoot = modelPath.parent_path().parent_path() / "img";
+
+  auto tryPaths = [&](std::initializer_list<std::filesystem::path> candidates) {
+    for (const auto &candidate : candidates) {
+      if (std::filesystem::exists(candidate)) {
+        return candidate;
+      }
+    }
+    return std::filesystem::path{};
+  };
+
+  if (stem == "coral1") {
+    return tryPaths({imgRoot / "coral_1" / "coral1Normals.jpg"});
+  }
+  if (stem == "coral2") {
+    return tryPaths({imgRoot / "coral_2" / "Coral2Normals.jpg"});
+  }
+  if (stem == "coral3") {
+    return tryPaths({imgRoot / "coral_3" / "Coral3Normals.jpg"});
+  }
+  if (stem == "coral4") {
+    return tryPaths({imgRoot / "coral_4" / "Coral4Normals.jpg"});
+  }
+  if (stem == "coral5") {
+    return tryPaths({imgRoot / "coral_5" / "Coral5Normals.jpg"});
+  }
+  if (stem == "coral6") {
+    return tryPaths({imgRoot / "coral_6" / "Coral6Normals.jpg"});
+  }
+  if (stem == "coral7") {
+    return tryPaths({imgRoot / "coral_7" / "Coral7Normals.jpg"});
+  }
+  if (stem == "coral8") {
+    return tryPaths({imgRoot / "coral_8" / "coral8Normals.jpg"});
+  }
+  if (stem == "coral9") {
+    return tryPaths({imgRoot / "coral_9" / "coral9Normals.jpg"});
+  }
+  if (stem == "coral10") {
+    return tryPaths({imgRoot / "coral_10" / "coral10Normals.jpg"});
+  }
+  if (stem == "coral11") {
+    return tryPaths({imgRoot / "coral_11" / "coral12Normals.jpg",
+                     imgRoot / "coral_11" / "coral11Normals.jpg"});
+  }
+
+  if (stem == "fish") {
+    return tryPaths({imgRoot / "fish" / "Tailor_low_DefaultMaterial_Normal.png"});
+  }
+
+  if (stem == "shark") {
+    return tryPaths({imgRoot / "shark" / "Nurse_Shark_Quad_Normal.png",
+                     imgRoot / "shark" / "Nurse_Shark_Tris_Normal.png"});
   }
 
   return {};
@@ -225,6 +289,24 @@ inline std::vector<ModelVertex> extractVertices(aiMesh *mesh) {
       vertex.texCoord[1] = vertex.position[2] * 0.5f + 0.5f;
     }
 
+    if (mesh->HasTangentsAndBitangents()) {
+      vertex.tangent[0] = mesh->mTangents[i].x;
+      vertex.tangent[1] = mesh->mTangents[i].y;
+      vertex.tangent[2] = mesh->mTangents[i].z;
+      const glm::vec3 tangent(vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]);
+      const glm::vec3 bitangent(mesh->mBitangents[i].x, mesh->mBitangents[i].y,
+                                mesh->mBitangents[i].z);
+      const glm::vec3 normal(vertex.normal[0], vertex.normal[1], vertex.normal[2]);
+      const float handedness =
+          (glm::dot(glm::cross(normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+      vertex.tangent[3] = handedness;
+    } else {
+      vertex.tangent[0] = 1.0f;
+      vertex.tangent[1] = 0.0f;
+      vertex.tangent[2] = 0.0f;
+      vertex.tangent[3] = 1.0f;
+    }
+
     meshVertices.push_back(vertex);
   }
 
@@ -285,23 +367,26 @@ inline bool createRenderableFromMesh(aiMesh *mesh, const glm::mat4 &modelMatrix,
       reinterpret_cast<void *>(offsetof(ModelVertex, texCoord)));
   glEnableVertexAttribArray(2);
 
+  glVertexAttribPointer(
+      3, 4, GL_FLOAT, GL_FALSE, sizeof(ModelVertex),
+      reinterpret_cast<void *>(offsetof(ModelVertex, tangent)));
+  glEnableVertexAttribArray(3);
+
   glBindVertexArray(0);
   return true;
 }
 
-inline GLuint textureForModel(const std::filesystem::path &modelPath) {
-#ifdef __APPLE__
-  std::filesystem::path texturePath = resolveCoralTexturePath(modelPath);
-  if (!texturePath.empty()) {
-    GLuint texture = loadTextureFromFile(texturePath);
-    if (texture != 0) {
-      return texture;
-    }
-  }
-#endif
+inline bool isCoralModel(const std::filesystem::path &path) {
+  std::string name = path.stem().string();
+  std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return name.find("coral") != std::string::npos;
+}
 
-  GLuint texture = 0;
+inline GLuint createFallbackTexture() {
   unsigned char pixels[4] = {255u, 255u, 255u, 255u};
+  GLuint texture = 0;
   glGenTextures(1, &texture);
   glBindTexture(GL_TEXTURE_2D, texture);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE,
@@ -314,13 +399,38 @@ inline GLuint textureForModel(const std::filesystem::path &modelPath) {
   return texture;
 }
 
+inline void loadTexturesForModel(const std::filesystem::path &modelPath,
+                                 Renderable &renderable) {
+  renderable.texture = 0;
+  renderable.normalTexture = 0;
+  renderable.useNormalMap = false;
+
+#ifdef __APPLE__
+  std::filesystem::path texturePath = resolveCoralTexturePath(modelPath);
+  if (!texturePath.empty()) {
+    renderable.texture = loadTextureFromFile(texturePath);
+  }
+
+  std::filesystem::path normalPath = resolveModelNormalTexturePath(modelPath);
+  if (!normalPath.empty()) {
+    renderable.normalTexture = loadTextureFromFile(normalPath);
+    renderable.useNormalMap = renderable.normalTexture != 0;
+  }
+#endif
+
+  if (renderable.texture == 0) {
+    renderable.texture = createFallbackTexture();
+  }
+}
+
 inline std::vector<Renderable> loadModelFile(const std::filesystem::path &path,
                                            const glm::mat4 &modelMatrix) {
   Assimp::Importer importer;
   const aiScene *scene = importer.ReadFile(
       path.string().c_str(),
       aiProcess_Triangulate | aiProcess_GenSmoothNormals |
-          aiProcess_JoinIdenticalVertices | aiProcess_ImproveCacheLocality);
+          aiProcess_CalcTangentSpace | aiProcess_JoinIdenticalVertices |
+          aiProcess_ImproveCacheLocality);
 
   if (scene == nullptr || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) != 0 ||
       scene->mRootNode == nullptr) {
@@ -340,20 +450,12 @@ inline std::vector<Renderable> loadModelFile(const std::filesystem::path &path,
     Renderable renderable;
     if (createRenderableFromMesh(scene->mMeshes[meshIndex], modelMatrix,
                                  renderable)) {
-      renderable.texture = textureForModel(path);
+      loadTexturesForModel(path, renderable);
       loadedRenderables.push_back(renderable);
     }
   }
 
   return loadedRenderables;
-}
-
-inline bool isCoralModel(const std::filesystem::path &path) {
-  std::string name = path.stem().string();
-  std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return name.find("coral") != std::string::npos;
 }
 
 inline bool isFishModel(const std::filesystem::path &path) {
@@ -492,7 +594,12 @@ inline std::vector<Renderable> loadSceneModels() {
 
 inline void destroyRenderables(std::vector<Renderable> &renderables) {
   for (Renderable &renderable : renderables) {
-    glDeleteTextures(1, &renderable.texture);
+    if (renderable.texture != 0) {
+      glDeleteTextures(1, &renderable.texture);
+    }
+    if (renderable.normalTexture != 0) {
+      glDeleteTextures(1, &renderable.normalTexture);
+    }
     glDeleteBuffers(1, &renderable.EBO);
     glDeleteBuffers(1, &renderable.VBO);
     glDeleteVertexArrays(1, &renderable.VAO);

@@ -22,6 +22,8 @@ GLint viewLocation = -1;
 GLint projLocation = -1;
 GLint modelLocation = -1;
 GLint textureLocation = -1;
+GLint normalMapLocation = -1;
+GLint useNormalMapLocation = -1;
 
 float deltaTime = 0.0f;
 float lastTime = 0.0f;
@@ -54,10 +56,16 @@ void initModel() {
   projLocation = glGetUniformLocation(program, "uProjection");
   modelLocation = glGetUniformLocation(program, "uModel");
   textureLocation = glGetUniformLocation(program, "uTexture");
+  normalMapLocation = glGetUniformLocation(program, "uNormalMap");
+  useNormalMapLocation = glGetUniformLocation(program, "uUseNormalMap");
 
   if (textureLocation >= 0) {
     glUseProgram(program);
     glUniform1i(textureLocation, 0);
+  }
+  if (normalMapLocation >= 0) {
+    glUseProgram(program);
+    glUniform1i(normalMapLocation, 1);
   }
 }
 
@@ -104,6 +112,17 @@ void renderScene(GLFWwindow *window) {
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderable.texture);
+
+    if (normalMapLocation >= 0) {
+      glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D,
+                    renderable.normalTexture != 0 ? renderable.normalTexture
+                                                  : renderable.texture);
+    }
+    if (useNormalMapLocation >= 0) {
+      glUniform1i(useNormalMapLocation, renderable.useNormalMap ? 1 : 0);
+    }
+
     glBindVertexArray(renderable.VAO);
     glDrawElements(GL_TRIANGLES, renderable.indexCount, GL_UNSIGNED_INT,
                    nullptr);
