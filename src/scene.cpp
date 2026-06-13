@@ -1,5 +1,3 @@
-#pragma once
-
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
@@ -12,6 +10,7 @@
 #include "camera.hpp"
 #include "models.hpp"
 #include "shader.hpp"
+#include "seabed.hpp"
 
 int width = 800;
 int height = 600;
@@ -35,6 +34,11 @@ void processMouse(GLFWwindow *, double xPos, double yPos);
 float lastX = floor(width / 2.0f);
 float lastY = floor(height / 2.0f);
 
+float sandDensity=1.0f;
+float sandAmplitude=5.0f;
+float sandSmoothness=50.0f;
+glm::mat4 sandModel=glm::translate(glm::mat4(1.0f), glm::vec3(.0f,-5.0f,.0f));
+
 void framebuffer_size_callback(GLFWwindow *, int width, int height) {
   glViewport(0, 0, width, height);
 }
@@ -44,6 +48,7 @@ void initModel() {
 
   program = createProgram("shaders/model.vert", "shaders/model.frag");
   renderables = loadSceneModels();
+  renderables.push_back(generateSand(128, 128, sandDensity, sandAmplitude, sandSmoothness, sandModel));
 
   viewLocation = glGetUniformLocation(program, "uView");
   projLocation = glGetUniformLocation(program, "uProjection");
