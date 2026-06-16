@@ -17,6 +17,24 @@ inline float pitchLimit = glm::radians(89.0f);
 inline glm::vec3 cameraVelocity = glm::vec3(0.0f);
 inline float movementSmoothness = 2.0f;
 
+inline void syncCameraOrientation() {
+  const auto rotationX =
+      glm::quat(std::cos(pitchAngle / 2.0f), std::sin(pitchAngle / 2.0f), 0.0f,
+                0.0f);
+  const auto rotationY =
+      glm::quat(std::cos(yawAngle / 2.0f), 0.0f, std::sin(yawAngle / 2.0f),
+                0.0f);
+  cameraOrientation = glm::normalize(rotationY * rotationX);
+}
+
+inline void initCamera() {
+  cameraPosition = glm::vec3(-9.0f, 1.4f, -6.0f);
+  yawAngle = 0.52f;
+  pitchAngle = -0.18f;
+  cameraVelocity = glm::vec3(0.0f);
+  syncCameraOrientation();
+}
+
 inline glm::mat4 getViewMatrix() {
   return glm::mat4_cast(glm::conjugate(cameraOrientation)) *
          glm::translate(glm::mat4(1.0f), -cameraPosition);
@@ -28,13 +46,7 @@ inline void rotateCamera(float yaw, float pitch, float amount) {
   pitchAngle += pitch * amount;
   pitchAngle = glm::clamp(pitchAngle, -pitchLimit, pitchLimit);
 
-  auto rotationX =
-      glm::quat(std::cos(pitchAngle / 2.0f), std::sin(pitchAngle / 2.0f),
-                0.0f, 0.0f);
-  auto rotationY =
-      glm::quat(std::cos(yawAngle / 2.0f), 0.0f, std::sin(yawAngle / 2.0f),
-                0.0f);
-  cameraOrientation = glm::normalize(rotationY * rotationX);
+  syncCameraOrientation();
 }
 
 inline void updateCameraMovement(glm::vec3 inputDirection,

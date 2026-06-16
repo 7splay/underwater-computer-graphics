@@ -9,8 +9,8 @@
 
 ## Mandatory methods
 
-- [ ] **Normal mapping** — sand seabed and coral surfaces, tangent-space TBN.
-- [ ] **PBR lighting** — metallic/roughness materials for sand, coral, rock, fish.
+- [x] **Normal mapping** — sand seabed and coral surfaces, tangent-space TBN.
+- [x] **PBR lighting** — metallic/roughness materials for sand, coral, rock, fish.
 - [x] **Quaternion camera control** — first-person diver camera with quaternion mouse look, pitch clamp, WASD/vertical movement, and smoothed velocity.
 - [ ] **Shadow mapping** — flashlight spotlight depth map with PCF.
 - [ ] **Parallel Transport Frames** — stable fish orientation along Catmull-Rom patrol splines.

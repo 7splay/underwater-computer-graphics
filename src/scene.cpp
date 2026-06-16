@@ -9,21 +9,17 @@
 
 #include "camera.hpp"
 #include "models.hpp"
-#include "shader.hpp"
+#include "renderer.hpp"
+#include "scene_loader.hpp"
 #include "seabed.hpp"
+#include "underwater_atmosphere.hpp"
 
 int width = 800;
 int height = 600;
 
-GLuint program = 0;
+ModelProgram modelProgram{};
 std::vector<Renderable> renderables;
-
-GLint viewLocation = -1;
-GLint projLocation = -1;
-GLint modelLocation = -1;
-GLint textureLocation = -1;
-GLint normalMapLocation = -1;
-GLint useNormalMapLocation = -1;
+Renderable sandRenderable;
 
 float deltaTime = 0.0f;
 float lastTime = 0.0f;
@@ -45,87 +41,64 @@ void framebuffer_size_callback(GLFWwindow *, int width, int height) {
   glViewport(0, 0, width, height);
 }
 
-void initModel() {
+void initModel(GLFWwindow *window) {
   glEnable(GL_DEPTH_TEST);
 
-  program = createProgram("shaders/model.vert", "shaders/model.frag");
-  renderables = loadSceneModels();
-  renderables.push_back(generateSand(128, 128, sandDensity, sandAmplitude, sandSmoothness, sandModel));
-
-  viewLocation = glGetUniformLocation(program, "uView");
-  projLocation = glGetUniformLocation(program, "uProjection");
-  modelLocation = glGetUniformLocation(program, "uModel");
-  textureLocation = glGetUniformLocation(program, "uTexture");
-  normalMapLocation = glGetUniformLocation(program, "uNormalMap");
-  useNormalMapLocation = glGetUniformLocation(program, "uUseNormalMap");
-
-  if (textureLocation >= 0) {
-    glUseProgram(program);
-    glUniform1i(textureLocation, 0);
-  }
-  if (normalMapLocation >= 0) {
-    glUseProgram(program);
-    glUniform1i(normalMapLocation, 1);
-  }
+  modelProgram = createModelProgram();
+  renderables = loadSceneModels([window]() {
+    if (window != nullptr) {
+      glfwPollEvents();
+    }
+  });
+  sandRenderable = generateSand(128, 128, sandDensity, sandAmplitude,
+                              sandSmoothness, sandModel);
 }
 
 void init(GLFWwindow *window) {
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 #ifdef __APPLE__
-  glViewport(0, 0, width * 2, height * 2); // account for retina display
+  glViewport(0, 0, width * 2, height * 2);
 #else
   glViewport(0, 0, width, height);
 #endif
 
-  initModel();
+  initCamera();
+  initModel(window);
   glfwSetCursorPosCallback(window, processMouse);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
 void renderScene(GLFWwindow *window) {
-  glClearColor(0.05f, 0.15f, 0.25f, 1.0f);
+  // Water background color - see underwater_atmosphere.hpp.
+  glClearColor(underwater::kClearColor.r, underwater::kClearColor.g,
+               underwater::kClearColor.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   glfwGetFramebufferSize(window, &width, &height);
   if (height == 0) {
     height = 1;
   }
-  glUseProgram(program);
+  glUseProgram(modelProgram.id);
 
   glm::mat4 view = getViewMatrix();
   glm::mat4 projection = glm::perspective(
-      glm::radians(35.0f),
-      static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.0f);
+      glm::radians(48.0f),
+      static_cast<float>(width) / static_cast<float>(height), 0.1f, 150.0f);
 
-  if (viewLocation >= 0) {
-    glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
+  if (modelProgram.view >= 0) {
+    glUniformMatrix4fv(modelProgram.view, 1, GL_FALSE, glm::value_ptr(view));
   }
-  if (projLocation >= 0) {
-    glUniformMatrix4fv(projLocation, 1, GL_FALSE, glm::value_ptr(projection));
+  if (modelProgram.projection >= 0) {
+    glUniformMatrix4fv(modelProgram.projection, 1, GL_FALSE,
+                       glm::value_ptr(projection));
+  }
+  if (modelProgram.cameraPos >= 0) {
+    glUniform3fv(modelProgram.cameraPos, 1, glm::value_ptr(cameraPosition));
   }
 
+  drawRenderable(modelProgram, sandRenderable);
   for (const Renderable &renderable : renderables) {
-    if (modelLocation >= 0) {
-      glUniformMatrix4fv(modelLocation, 1, GL_FALSE,
-                         glm::value_ptr(renderable.model));
-    }
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderable.texture);
-
-    if (normalMapLocation >= 0) {
-      glActiveTexture(GL_TEXTURE1);
-      glBindTexture(GL_TEXTURE_2D,
-                    renderable.normalTexture != 0 ? renderable.normalTexture
-                                                  : renderable.texture);
-    }
-    if (useNormalMapLocation >= 0) {
-      glUniform1i(useNormalMapLocation, renderable.useNormalMap ? 1 : 0);
-    }
-
-    glBindVertexArray(renderable.VAO);
-    glDrawElements(GL_TRIANGLES, renderable.indexCount, GL_UNSIGNED_INT,
-                   nullptr);
+    drawRenderable(modelProgram, renderable);
   }
 
   glfwSwapBuffers(window);
@@ -173,7 +146,7 @@ void processMouse(GLFWwindow *, double xPos, double yPos) {
   lastX = static_cast<float>(xPos);
   lastY = static_cast<float>(yPos);
 
-  // ignore one-off spikes from the cursor-grab
+    // ignore one-off spikes from the cursor-grab
   if (std::abs(deltaX) > 200.0f || std::abs(deltaY) > 200.0f) {
     return;
   }
@@ -184,17 +157,18 @@ void processMouse(GLFWwindow *, double xPos, double yPos) {
 void renderLoop(GLFWwindow *window) {
   lastTime = static_cast<float>(glfwGetTime());
   while (!glfwWindowShouldClose(window)) {
+    glfwPollEvents();
     float time = static_cast<float>(glfwGetTime());
     deltaTime = time - lastTime;
     lastTime = time;
 
     processInput(window);
     renderScene(window);
-    glfwPollEvents();
   }
 }
 
 void shutdown(GLFWwindow *) {
+  renderables.push_back(sandRenderable);
   destroyRenderables(renderables);
-  deleteProgram(program);
+  deleteProgram(modelProgram.id);
 }
