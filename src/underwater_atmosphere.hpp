@@ -9,4 +9,9 @@ constexpr glm::vec3 kFogColor{0.04f, 0.16f, 0.26f};     // exponential fog
 constexpr glm::vec3 kAmbientColor{0.04f, 0.10f, 0.14f}; // PBR ambient term
 constexpr float kFogDensity = 0.028f;
 constexpr float kFogMax = 0.92f;
+
+// Visible sun direction (normalized in shaders). Used by the procedural skybox
+// to place a soft glow; shared so the spot in the sky matches the scene lighting.
+constexpr glm::vec3 kSunDirection{0.35f, 0.55f, -0.45f};
+constexpr glm::vec3 kSunColor{1.0f, 0.95f, 0.82f};
 }

@@ -14,7 +14,7 @@
 - [x] **Quaternion camera control** — first-person diver camera with quaternion mouse look, pitch clamp, WASD/vertical movement, and smoothed velocity.
 - [ ] **Shadow mapping** — flashlight spotlight depth map with PCF.
 - [ ] **Parallel Transport Frames** — stable fish orientation along Catmull-Rom patrol splines.
-- [ ] **Underwater skybox/cubemap** — blue-green gradient, bright above, dark abyss below.
+- [x] **Underwater skybox/cubemap** — blue-green gradient, bright above, dark abyss below.
 
 ## Build and run instructions
 ### MacOS
