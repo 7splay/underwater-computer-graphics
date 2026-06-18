@@ -23,25 +23,25 @@
 git clone https://github.com/7splay/underwater-computer-graphics.git
 cd underwater-computer-graphics
 ```
-1. Install Xcode Command Line Tools if not installed already (used for compiling C/C++ code):
+2. Install Xcode Command Line Tools if not installed already (used for compiling C/C++ code):
 ```bash
 xcode-select --install
 ```
-1. Install brew if not installed already (used for downloading required libraries) - https://brew.sh/:
+3. Install brew if not installed already (used for downloading required libraries) - https://brew.sh/:
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
-1. Install required libraries:
+4. Install required libraries:
 ```bash
 brew install cmake glfw glew assimp glm
 ```
-1. Build the project:
+5. Build the project:
 ```bash
 mkdir -p build
 cmake -S . -B build
 cmake --build build
 ```
-1. Run the compiled executable:
+6. Run the compiled executable:
 ```bash
 ./build/underwater-computer-graphics
 ```
