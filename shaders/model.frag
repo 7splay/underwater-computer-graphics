@@ -39,6 +39,9 @@ uniform vec3  uFlashColor;
 uniform float uFlashIntensity;
 uniform bool  uFlashEnabled;
 uniform int   uShadowEnabled;   // 1 if the shadow map was rendered this frame
+uniform sampler2D uOpacityMap;
+uniform int uUseAlphaCutout;
+uniform int uUseOpacityCutout;
 
 out vec4 FragColor;
 
@@ -169,6 +172,21 @@ void main() {
     // so transparent pixels must be discarded before any lighting
     if (uUseAlphaTest && texSample.a < uAlphaCutoff) {
         discard;
+    }
+    // seaweed-style cutouts use a separate opacity map or luminance fallback
+    if (uUseAlphaCutout != 0) {
+        float alpha;
+        if (uUseOpacityCutout != 0) {
+            alpha = texture(uOpacityMap, vTexCoord).r;
+        } else {
+            alpha = max(max(texSample.r, texSample.g), texSample.b);
+            if (texSample.a < 0.99) {
+                alpha = max(alpha, texSample.a);
+            }
+        }
+        if (alpha < uAlphaCutoff) {
+            discard;
+        }
     }
 
     vec3 albedo = texSample.rgb * uAlbedoTint;

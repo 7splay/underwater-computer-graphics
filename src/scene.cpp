@@ -12,6 +12,7 @@
 #include "flashlight.hpp"
 #include "goggles.hpp"
 #include "models.hpp"
+#include "lod_system.hpp"
 #include "renderer.hpp"
 #include "scene_loader.hpp"
 #include "seabed.hpp"
@@ -26,7 +27,8 @@ ModelProgram modelProgram{};
 ShadowProgram shadowProgram{};
 ShadowMap shadowMap{};
 Goggles goggles{};
-std::vector<Renderable> renderables;
+LodScene lodScene{};
+std::vector<Renderable> fishRenderables;
 std::vector<Fish> fish;
 std::vector<PatrolLoop> patrols;
 Renderable sandRenderable;
@@ -69,6 +71,10 @@ float sandAmplitude=5.0f;
 float sandSmoothness=50.0f;
 glm::mat4 sandModel=glm::translate(glm::mat4(1.0f), glm::vec3(.0f,-5.0f,.0f));
 
+glm::vec3 lastLodCameraPos(0.0f);
+bool lodCameraInitialized = false;
+constexpr float kLodUpdateMoveThreshold = 1.5f;
+
 void framebuffer_size_callback(GLFWwindow *, int width, int height) {
   glViewport(0, 0, width, height);
 }
@@ -87,7 +93,8 @@ void initModel(GLFWwindow *window) {
       glfwPollEvents();
     }
   });
-  renderables = std::move(sceneLoad.renderables);
+  lodScene = std::move(sceneLoad.lod);
+  fishRenderables = std::move(sceneLoad.fishRenderables);
 
   // build closed patrol loops around coral clusters: 6 control points each,
   // arranged as a wobbly circle above the anchor at cruise depth. loop Y is
@@ -115,14 +122,14 @@ void initModel(GLFWwindow *window) {
 
   // build fish entities, assigning each to its nearest patrol loop
   for (const FishSpawn &spawn : sceneLoad.fishSpawns) {
-    if (spawn.renderableIndex >= renderables.size()) continue;
-    fish.push_back(makeFish(&renderables[spawn.renderableIndex], spawn.position,
-                            spawn.scale, spawn.patrolIndex));
+    if (spawn.renderableIndex >= fishRenderables.size()) continue;
+    fish.push_back(makeFish(&fishRenderables[spawn.renderableIndex],
+                            spawn.position, spawn.scale, spawn.patrolIndex));
     fish.back().patrolT =
         std::fmod(static_cast<float>(spawn.renderableIndex) * 0.17f, 1.0f);
     syncFishModelMatrix(fish.back());
   }
-  sandRenderable = generateSand(128, 128, sandDensity, sandAmplitude,
+  sandRenderable = generateSand(256, 256, sandDensity, sandAmplitude,
                               sandSmoothness, sandModel);
 
   skyboxProgram = createProgram("shaders/skybox.vert", "shaders/skybox.frag");
@@ -185,9 +192,16 @@ void renderScene(GLFWwindow *window) {
   glm::mat4 view = getViewMatrix();
   glm::mat4 projection = glm::perspective(
       glm::radians(48.0f),
-      static_cast<float>(width) / static_cast<float>(height), 0.1f, 150.0f);
+      static_cast<float>(width) / static_cast<float>(height), 0.1f, 180.0f);
 
   const float sceneTime = static_cast<float>(glfwGetTime());
+
+  if (!lodCameraInitialized ||
+      glm::length(cameraPosition - lastLodCameraPos) >= kLodUpdateMoveThreshold) {
+    updateLodScene(lodScene, cameraPosition);
+    lastLodCameraPos = cameraPosition;
+    lodCameraInitialized = true;
+  }
 
   // shadow pass uses the unbiased VP, lit pass uses the biased one
   const glm::mat4 lightViewProj =
@@ -200,8 +214,13 @@ void renderScene(GLFWwindow *window) {
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(1.5f, 2.0f);
     glUseProgram(shadowProgram.id);
-    for (const Renderable &renderable : renderables) {
+    for (const Renderable &renderable : lodScene.staticRenderables) {
       drawRenderableShadow(shadowProgram, renderable, lightViewProj);
+    }
+    for (const LodInstancedGroup &group : lodScene.groups) {
+      if (group.castsShadow) {
+        drawRenderableShadow(shadowProgram, group.high, lightViewProj);
+      }
     }
     drawRenderableShadow(shadowProgram, sandRenderable, lightViewProj);
     glDisable(GL_POLYGON_OFFSET_FILL);
@@ -273,7 +292,30 @@ void renderScene(GLFWwindow *window) {
   glBindTexture(GL_TEXTURE_2D, shadowMap.depthTexture);
 
   drawRenderable(modelProgram, sandRenderable);
-  for (const Renderable &renderable : renderables) {
+  for (const Renderable &renderable : lodScene.staticRenderables) {
+    drawRenderable(modelProgram, renderable);
+  }
+
+  std::vector<const Renderable *> lodRenderables;
+  lodRenderables.reserve(lodScene.groups.size() * 3);
+  collectLodRenderables(lodScene, LodTier::High, lodRenderables);
+  for (const Renderable *renderable : lodRenderables) {
+    drawRenderable(modelProgram, *renderable);
+  }
+  lodRenderables.clear();
+  collectLodRenderables(lodScene, LodTier::Med, lodRenderables);
+  for (const Renderable *renderable : lodRenderables) {
+    drawRenderable(modelProgram, *renderable);
+  }
+  lodRenderables.clear();
+  collectLodRenderables(lodScene, LodTier::Low, lodRenderables);
+  for (const Renderable *renderable : lodRenderables) {
+    drawRenderable(modelProgram, *renderable);
+  }
+
+  // fish: separate per-instance draw so each fish's model matrix can be
+  // updated by the B14 AI every frame (LOD groups have baked VBOs)
+  for (const Renderable &renderable : fishRenderables) {
     drawRenderable(modelProgram, renderable);
   }
 
@@ -434,6 +476,7 @@ void processInput(GLFWwindow *window) {
   if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) independentInputDirection += glm::vec3(0.0f, 1.0f, 0.0f);
   if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) independentInputDirection += glm::vec3(0.0f, -1.0f, 0.0f);
   updateCameraMovement(inputDirection, independentInputDirection, cameraSpeed, deltaTime);
+  clampCameraToScene();
 }
 
 void processMouse(GLFWwindow *, double xPos, double yPos) {
@@ -475,8 +518,9 @@ void renderLoop(GLFWwindow *window) {
 }
 
 void shutdown(GLFWwindow *) {
-  renderables.push_back(sandRenderable);
-  destroyRenderables(renderables);
+  destroyLodScene(lodScene);
+  std::vector<Renderable> sandOnly{sandRenderable};
+  destroyRenderables(sandOnly);
   destroyShadowMap(shadowMap);
   destroyGoggles(goggles);
   glDeleteTextures(1, &skyboxTexture);

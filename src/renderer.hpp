@@ -1,5 +1,6 @@
 #pragma once
 
+#include "instancing.hpp"
 #include "renderable.hpp"
 #include "shader.hpp"
 #include "underwater_atmosphere.hpp"
@@ -39,6 +40,9 @@ struct ModelProgram {
   GLint flashIntensity = -1;
   GLint flashEnabled = -1;
   GLint shadowEnabled = -1;
+  GLint useBillboard = -1;
+  GLint useAlphaCutout = -1;
+  GLint useOpacityCutout = -1;
 };
 
 inline GLint uniformLocation(GLuint program, const char *name) {
@@ -79,11 +83,15 @@ inline ModelProgram createModelProgram() {
   program.flashIntensity = uniformLocation(program.id, "uFlashIntensity");
   program.flashEnabled = uniformLocation(program.id, "uFlashEnabled");
   program.shadowEnabled = uniformLocation(program.id, "uShadowEnabled");
+  program.useBillboard = uniformLocation(program.id, "uBillboard");
+  program.useAlphaCutout = uniformLocation(program.id, "uUseAlphaCutout");
+  program.useOpacityCutout = uniformLocation(program.id, "uUseOpacityCutout");
 
   const GLint texture = uniformLocation(program.id, "uTexture");
   const GLint normalMap = uniformLocation(program.id, "uNormalMap");
   const GLint roughnessMap = uniformLocation(program.id, "uRoughnessMap");
   const GLint metallicMap = uniformLocation(program.id, "uMetallicMap");
+  const GLint opacityMap = uniformLocation(program.id, "uOpacityMap");
   const GLint shadowMap = uniformLocation(program.id, "uShadowMap");
   if (texture >= 0) {
     glUniform1i(texture, 0);
@@ -96,6 +104,9 @@ inline ModelProgram createModelProgram() {
   }
   if (metallicMap >= 0) {
     glUniform1i(metallicMap, 3);
+  }
+  if (opacityMap >= 0) {
+    glUniform1i(opacityMap, 5);
   }
   if (shadowMap >= 0) {
     glUniform1i(shadowMap, 4);  // texture unit 4 reserved for the shadow map
@@ -136,6 +147,11 @@ inline void bindRenderableTextures(const Renderable &renderable) {
   glBindTexture(GL_TEXTURE_2D, renderable.metallicTexture != 0
                                   ? renderable.metallicTexture
                                   : renderable.texture);
+
+  glActiveTexture(GL_TEXTURE5);
+  glBindTexture(GL_TEXTURE_2D, renderable.opacityTexture != 0
+                                  ? renderable.opacityTexture
+                                  : renderable.texture);
 }
 
 inline void drawRenderable(const ModelProgram &program,
@@ -143,9 +159,12 @@ inline void drawRenderable(const ModelProgram &program,
   if (renderable.indexCount <= 0) {
     return;
   }
+  if (renderable.instVBO != 0 && renderable.instanceCount <= 0) {
+    return;
+  }
 
   const bool useInstancing =
-      renderable.instanceCount > 1 && renderable.instVBO != 0;
+      renderable.instVBO != 0 && renderable.instanceCount > 0;
 
   if (program.useInstancing >= 0) {
     glUniform1i(program.useInstancing, useInstancing ? 1 : 0);
@@ -187,8 +206,26 @@ inline void drawRenderable(const ModelProgram &program,
   if (program.albedoTint >= 0) {
     glUniform3fv(program.albedoTint, 1, glm::value_ptr(renderable.albedoTint));
   }
+  if (program.useBillboard >= 0) {
+    glUniform1i(program.useBillboard, renderable.isBillboard ? 1 : 0);
+  }
+  if (program.useAlphaCutout >= 0) {
+    glUniform1i(program.useAlphaCutout, renderable.useAlphaCutout ? 1 : 0);
+  }
+  if (program.useOpacityCutout >= 0) {
+    glUniform1i(program.useOpacityCutout,
+                  renderable.useOpacityCutout ? 1 : 0);
+  }
+
+  const bool disableCull = renderable.isDoubleSided;
+  if (disableCull) {
+    glDisable(GL_CULL_FACE);
+  }
 
   glBindVertexArray(renderable.VAO);
+  if (useInstancing) {
+    bindInstancedAttributes(renderable.instVBO);
+  }
   glEnable(GL_POLYGON_OFFSET_FILL);
   glPolygonOffset(1.0f, 1.0f);
   if (useInstancing) {
@@ -199,6 +236,9 @@ inline void drawRenderable(const ModelProgram &program,
                    nullptr);
   }
   glDisable(GL_POLYGON_OFFSET_FILL);
+  if (disableCull) {
+    glEnable(GL_CULL_FACE);
+  }
 }
 
 // shadow-pass draw: reuses the lit-pass geometry with a depth-only program,
@@ -223,7 +263,11 @@ inline ShadowProgram createShadowProgram() {
 inline void drawRenderableShadow(const ShadowProgram &sp,
                                  const Renderable &renderable,
                                  const glm::mat4 &lightSpace) {
-  if (renderable.indexCount <= 0) {
+  if (renderable.indexCount <= 0 || renderable.isBillboard ||
+      renderable.useAlphaCutout) {
+    return;
+  }
+  if (renderable.instVBO != 0 && renderable.instanceCount <= 0) {
     return;
   }
   glUseProgram(sp.id);
@@ -233,7 +277,7 @@ inline void drawRenderableShadow(const ShadowProgram &sp,
   }
 
   const bool useInstancing =
-      renderable.instanceCount > 1 && renderable.instVBO != 0;
+      renderable.instVBO != 0 && renderable.instanceCount > 0;
   if (sp.useInstancing >= 0) {
     glUniform1i(sp.useInstancing, useInstancing ? 1 : 0);
   }
@@ -244,6 +288,7 @@ inline void drawRenderableShadow(const ShadowProgram &sp,
 
   glBindVertexArray(renderable.VAO);
   if (useInstancing) {
+    bindInstancedAttributes(renderable.instVBO);
     glDrawElementsInstanced(GL_TRIANGLES, renderable.indexCount,
                             GL_UNSIGNED_INT, nullptr, renderable.instanceCount);
   } else {

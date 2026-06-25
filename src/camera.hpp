@@ -5,7 +5,19 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
 #include <cmath>
+
+#include "seabed_height.hpp"
+
+namespace {
+// Playable bounds — sand extends further (see scene.cpp) so the mesh edge stays
+// out of sight while the camera still hits an invisible wall here.
+constexpr float kCameraHalfExtentX = 50.0f;
+constexpr float kCameraHalfExtentZ = 50.0f;
+constexpr float kCameraMinAboveSeabed = 1.15f;
+constexpr float kCameraMaxHeight = 14.0f;
+}  // namespace
 
 inline glm::quat cameraOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 inline glm::vec3 cameraPosition = glm::vec3(0.0f, 1.5f, 6.0f);
@@ -63,4 +75,46 @@ inline void updateCameraMovement(glm::vec3 inputDirection,
   float alpha = 1.0f - std::exp(-movementSmoothness * deltaTime);
   cameraVelocity = glm::mix(cameraVelocity, desiredVelocity, alpha);
   cameraPosition += cameraVelocity * deltaTime;
+}
+
+inline void clampCameraToScene(const SeabedParams &seabed = {}) {
+  if (cameraPosition.x < -kCameraHalfExtentX) {
+    cameraPosition.x = -kCameraHalfExtentX;
+    if (cameraVelocity.x < 0.0f) {
+      cameraVelocity.x = 0.0f;
+    }
+  } else if (cameraPosition.x > kCameraHalfExtentX) {
+    cameraPosition.x = kCameraHalfExtentX;
+    if (cameraVelocity.x > 0.0f) {
+      cameraVelocity.x = 0.0f;
+    }
+  }
+
+  if (cameraPosition.z < -kCameraHalfExtentZ) {
+    cameraPosition.z = -kCameraHalfExtentZ;
+    if (cameraVelocity.z < 0.0f) {
+      cameraVelocity.z = 0.0f;
+    }
+  } else if (cameraPosition.z > kCameraHalfExtentZ) {
+    cameraPosition.z = kCameraHalfExtentZ;
+    if (cameraVelocity.z > 0.0f) {
+      cameraVelocity.z = 0.0f;
+    }
+  }
+
+  const float seabedY =
+      sampleSeabedWorldHeight(cameraPosition.x, cameraPosition.z, seabed);
+  const float minY = seabedY + kCameraMinAboveSeabed;
+  if (cameraPosition.y < minY) {
+    cameraPosition.y = minY;
+    if (cameraVelocity.y < 0.0f) {
+      cameraVelocity.y = 0.0f;
+    }
+  }
+  if (cameraPosition.y > kCameraMaxHeight) {
+    cameraPosition.y = kCameraMaxHeight;
+    if (cameraVelocity.y > 0.0f) {
+      cameraVelocity.y = 0.0f;
+    }
+  }
 }

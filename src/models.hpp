@@ -154,7 +154,8 @@ inline void destroyRenderables(std::vector<Renderable> &renderables) {
   for (Renderable &renderable : renderables) {
     const GLuint textures[] = {renderable.texture, renderable.normalTexture,
                                renderable.roughnessTexture,
-                               renderable.metallicTexture};
+                               renderable.metallicTexture,
+                               renderable.opacityTexture};
     for (GLuint texture : textures) {
       if (texture != 0 && deletedTextures.insert(texture).second) {
         glDeleteTextures(1, &texture);

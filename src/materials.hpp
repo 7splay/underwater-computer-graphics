@@ -23,8 +23,12 @@ inline bool isFishModel(const std::filesystem::path &path) {
 inline bool isSkippedModel(const std::filesystem::path &path) {
   const std::string name = toLowerCopy(path.stem().string());
   // worm is loaded manually as the bait mesh, never auto-placed in the scene
-  return name.find("shark") != std::string::npos ||
-         name.find("worm") != std::string::npos;
+  // shark is rendered via a dedicated LOD group in scene_loader, not skipped
+  return name.find("worm") != std::string::npos;
+}
+
+inline bool isSharkModel(const std::filesystem::path &path) {
+  return toLowerCopy(path.stem().string()).find("shark") != std::string::npos;
 }
 
 inline bool isShipModel(const std::filesystem::path &path) {

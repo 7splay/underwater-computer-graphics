@@ -13,6 +13,7 @@ struct Renderable {
   GLuint normalTexture = 0;
   GLuint roughnessTexture = 0;
   GLuint metallicTexture = 0;
+  GLuint opacityTexture = 0;
   bool useNormalMap = false;
   bool useRoughnessMap = false;
   bool useMetallicMap = false;
@@ -29,6 +30,10 @@ struct Renderable {
   GLuint instVBO = 0;
   glm::mat4 model = glm::mat4(1.0f);
   std::vector<glm::mat4> instanceMatrices;
+  bool isBillboard = false;
+  bool useAlphaCutout = false;
+  bool useOpacityCutout = false;
+  bool isDoubleSided = false;
 };
 
 struct ModelVertex {

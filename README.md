@@ -4,7 +4,7 @@
 
 ## Chosen methods
 
-- [ ] **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing; each instance picks one of three LOD tiers (HIGH / MED / LOW billboard) based on camera distance.
+- [x] **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing; each instance picks one of three LOD tiers (HIGH / MED / LOW billboard) based on camera distance.
 - [x] **B14 — Simple creature animation state machine:** each fish has `SWIM` / `FLEE` / `CHASE` states with transitions driven by flashlight ray hits and bait proximity.
 
 ## Mandatory methods

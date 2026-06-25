@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <iostream>
@@ -11,8 +12,11 @@
 #include <glm/glm.hpp>
 
 #include "coral_placement.hpp"
-#include "instancing.hpp"
+#include "camera.hpp"
+#include "lod_system.hpp"
 #include "models.hpp"
+#include "seaweed_cluster.hpp"
+#include "seaweed_placement.hpp"
 
 // spawn info for one fish instance, collected while the scene is loaded
 // so scene.cpp can build a Fish without re-deriving the placement math
@@ -23,8 +27,13 @@ struct FishSpawn {
   std::size_t patrolIndex = 0;
 };
 
+// wrapper around LodScene that also carries fish/interactivity data the loader
+// collects (coral anchors for patrol-loop generation, fish spawn info).
+// fish are kept as separate per-instance renderables so the B14 AI can update
+// each fish's model matrix individually; corals/seaweed/rocks use LOD groups
 struct SceneLoadResult {
-  std::vector<Renderable> renderables;
+  LodScene lod;
+  std::vector<Renderable> fishRenderables;
   std::vector<FishSpawn> fishSpawns;
   std::vector<glm::vec3> coralAnchors;  // XZ centers, used to build patrol loops
 };
@@ -41,6 +50,7 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
 
   constexpr std::size_t kFishInstancesPerModel = 14;
   constexpr std::size_t kFishesInstancesPerModel = 10;
+  const SeabedParams seabed{};
 
   std::vector<fs::path> modelFiles;
   for (const auto &entry : fs::directory_iterator("models")) {
@@ -59,6 +69,13 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
 
   std::sort(modelFiles.begin(), modelFiles.end());
 
+  std::vector<fs::path> coralFiles;
+  for (const auto &file : modelFiles) {
+    if (isCoralModel(file)) {
+      coralFiles.push_back(file);
+    }
+  }
+
   std::unordered_map<std::string, std::vector<Renderable>> meshCache;
   auto loadBaseMeshes = [&](const fs::path &file) -> std::vector<Renderable> & {
     const std::string key = file.string();
@@ -76,12 +93,12 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
   };
 
   SceneLoadResult result;
-  auto &renderables = result.renderables;
+  LodScene &scene = result.lod;
+  auto &fishRenderables = result.fishRenderables;
   auto &fishSpawns = result.fishSpawns;
   auto &coralAnchors = result.coralAnchors;
 
   std::size_t coralIndex = 0;
-  std::size_t fishInstanceIndex = 0;
   std::size_t backgroundIndex = 0;
   std::size_t backgroundTotal = 0;
   for (const auto &file : modelFiles) {
@@ -90,6 +107,49 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
     }
   }
 
+  CoralPlacementResult coralPlacements{};
+  if (!coralFiles.empty()) {
+    coralPlacements = generateNoiseCoralPlacements(coralFiles.size(), seabed);
+  }
+
+  const Renderable clusterSeaweed = loadClusterSeaweed();
+  if (clusterSeaweed.VAO != 0) {
+    const std::vector<glm::mat4> clusterTransforms =
+        generateClusterSeaweedPlacements(seabed);
+    std::cout << "Placed " << clusterTransforms.size()
+              << " cluster seaweed using noise scattering." << std::endl;
+    if (!clusterTransforms.empty()) {
+      LodInstancedGroup group = createLodInstancedGroup(
+          clusterSeaweed, clusterTransforms, 16.0f, 24.0f, 1.15f, 2.4f, false);
+      scene.groups.push_back(std::move(group));
+    }
+  }
+
+  if (!coralFiles.empty()) {
+    for (std::size_t coralIndex = 0; coralIndex < coralFiles.size();
+         ++coralIndex) {
+      const fs::path &file = coralFiles[coralIndex];
+      const std::vector<glm::mat4> &transforms =
+          coralPlacements.perVariantTransforms[coralIndex];
+      if (transforms.empty()) {
+        continue;
+      }
+      // collect one anchor per coral variant so scene.cpp can build a
+      // Catmull-Rom patrol loop around each cluster
+      for (const glm::mat4 &t : transforms) {
+        coralAnchors.push_back(glm::vec3(t[3]));
+      }
+
+      const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
+      for (const Renderable &mesh : baseMeshes) {
+        LodInstancedGroup group = createLodInstancedGroup(
+            mesh, transforms, 18.0f, 40.0f, 1.35f, 1.75f, true);
+        scene.groups.push_back(std::move(group));
+      }
+    }
+  }
+
+  std::size_t fishInstanceIndex = 0;
   for (const auto &file : modelFiles) {
     std::string stem = file.stem().string();
     std::transform(stem.begin(), stem.end(), stem.begin(), [](unsigned char c) {
@@ -97,13 +157,7 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
     });
 
     if (isCoralModel(file)) {
-      const glm::mat4 transform =
-          coralPlacement(coralIndex++, modelFiles.size());
-      const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
-      for (const Renderable &mesh : baseMeshes) {
-        renderables.push_back(cloneRenderable(mesh, transform));
-      }
-      coralAnchors.push_back(glm::vec3(transform[3]));
+      // corals are processed in a dedicated LOD pass above; skip in-loop
       continue;
     }
 
@@ -112,19 +166,35 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
     }
 
     if (isFishModel(file)) {
+      // fish are kept as separate per-instance renderables (not LOD groups) so
+      // the B14 AI can update each fish's model matrix every frame. corals and
+      // seaweed use LOD; fish do not. placement uses colleague's noise-driven
+      // fishPlacementNoise for consistency with the rest of the scene
+      const bool isSchool = stem.find("fishes") != std::string::npos;
       const std::size_t instanceCount =
-          stem.find("fishes") != std::string::npos ? kFishesInstancesPerModel
-                                                   : kFishInstancesPerModel;
-      const float meshScale = stem.find("fishes") != std::string::npos ? 0.25f : 1.0f;
+          isSchool ? kFishesInstancesPerModel : kFishInstancesPerModel;
+      const float meshScale = isSchool ? 0.25f : 1.0f;
       const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
+      // fishes.obj bundles 5 sub-meshes (a pre-baked school). clone them all
+      // per instance would scatter ghost fish; keep only the largest sub-mesh
+      // as the canonical single-fish mesh
+      const Renderable *primaryMesh = nullptr;
+      for (const Renderable &mesh : baseMeshes) {
+        if (primaryMesh == nullptr || mesh.indexCount > primaryMesh->indexCount) {
+          primaryMesh = &mesh;
+        }
+      }
+      if (primaryMesh == nullptr) {
+        ++backgroundIndex;
+        continue;
+      }
       for (std::size_t instance = 0; instance < instanceCount; ++instance) {
-        glm::mat4 transform = fishPlacement(fishInstanceIndex++, backgroundTotal);
-        transform = glm::scale(transform, glm::vec3(meshScale));
+        glm::mat4 transform =
+            fishPlacementNoise(fishInstanceIndex++, seabed, meshScale);
         const float placementScale = glm::length(transform[0]);
         const glm::vec3 pos(transform[3]);
         // assign each fish to its nearest coral anchor's patrol loop, so the
         // school breaks into smaller groups orbiting different coral clusters
-        // instead of clustering on a single loop
         std::size_t patrol = 0;
         if (!coralAnchors.empty()) {
           float bestDist = std::numeric_limits<float>::max();
@@ -137,36 +207,37 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
             }
           }
         }
-        // some fish assets (fishes.obj) bundle many sub-meshes (a pre-baked
-        // school of 5 fish at offsets in model space). cloning every sub-mesh
-        // per instance would scatter 4 ghost fish around each spawn point, so
-        // we keep only the largest sub-mesh as the canonical single-fish mesh
-        const Renderable *primaryMesh = nullptr;
-        for (const Renderable &mesh : baseMeshes) {
-          if (primaryMesh == nullptr ||
-              mesh.indexCount > primaryMesh->indexCount) {
-            primaryMesh = &mesh;
-          }
-        }
-        if (primaryMesh != nullptr) {
-          const std::size_t idx = renderables.size();
-          renderables.push_back(cloneRenderable(*primaryMesh, transform));
-          FishSpawn spawn;
-          spawn.renderableIndex = idx;
-          spawn.position = pos;
-          spawn.scale = placementScale;
-          spawn.patrolIndex = patrol;
-          fishSpawns.push_back(spawn);
-        }
+        const std::size_t idx = fishRenderables.size();
+        fishRenderables.push_back(cloneRenderable(*primaryMesh, transform));
+        FishSpawn spawn;
+        spawn.renderableIndex = idx;
+        spawn.position = pos;
+        spawn.scale = placementScale;
+        spawn.patrolIndex = patrol;
+        fishSpawns.push_back(spawn);
+      }
+      ++backgroundIndex;
+      continue;
+    }
+
+    if (isSharkModel(file)) {
+      const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
+      if (!baseMeshes.empty()) {
+        const std::vector<glm::mat4> transforms = {sharkPlacement(seabed)};
+        LodInstancedGroup group = createLodInstancedGroup(
+            baseMeshes.front(), transforms, 22.0f, 40.0f, 2.4f, 1.2f, false,
+            false, 3, 8);
+        scene.groups.push_back(std::move(group));
       }
       ++backgroundIndex;
       continue;
     }
 
     if (isShipModel(file)) {
-      const glm::mat4 transform = sunkenShipPlacement();
+      const glm::mat4 transform = sunkenShipPlacement(seabed);
       std::vector<Renderable> loaded = loadModelFile(file, transform);
-      renderables.insert(renderables.end(), loaded.begin(), loaded.end());
+      scene.staticRenderables.insert(scene.staticRenderables.end(),
+                                     loaded.begin(), loaded.end());
       ++backgroundIndex;
       continue;
     }
@@ -174,10 +245,11 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
     const glm::mat4 transform =
         backgroundPlacement(backgroundIndex++, backgroundTotal);
     std::vector<Renderable> loaded = loadModelFile(file, transform);
-    renderables.insert(renderables.end(), loaded.begin(), loaded.end());
+    scene.staticRenderables.insert(scene.staticRenderables.end(), loaded.begin(),
+                                   loaded.end());
   }
 
-  if (renderables.empty()) {
+  if (scene.groups.empty() && scene.staticRenderables.empty()) {
     std::cerr << "No renderable models were loaded from models/" << std::endl;
   }
 
