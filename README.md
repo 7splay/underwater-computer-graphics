@@ -12,9 +12,19 @@
 - [x] **Normal mapping** — sand seabed and coral surfaces, tangent-space TBN.
 - [x] **PBR lighting** — metallic/roughness materials for sand, coral, rock, fish.
 - [x] **Quaternion camera control** — first-person diver camera with quaternion mouse look, pitch clamp, WASD/vertical movement, and smoothed velocity.
-- [ ] **Shadow mapping** — flashlight spotlight depth map with PCF.
+- [x] **Shadow mapping** — flashlight spotlight depth map with 12-tap Poisson-disk PCF and slope-scaled bias.
 - [ ] **Parallel Transport Frames** — stable fish orientation along Catmull-Rom patrol splines.
 - [x] **Underwater skybox/cubemap** — blue-green gradient, bright above, dark abyss below.
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| `W` `A` `S` `D` | move (forward / left / back / right) |
+| Mouse | look around |
+| `Space` / `Left Shift` | ascend / descend |
+| `F` | toggle the diver flashlight (spotlight + shadows) |
+| `Esc` | quit |
 
 ## Build and run instructions
 ### MacOS

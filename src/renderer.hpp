@@ -27,6 +27,16 @@ struct ModelProgram {
   GLint fogDensity = -1;
   GLint fogMax = -1;
   GLint ambientColor = -1;
+  GLint lightSpace = -1;
+  GLint flashPos = -1;
+  GLint flashDir = -1;
+  GLint flashRange = -1;
+  GLint flashCosInner = -1;
+  GLint flashCosOuter = -1;
+  GLint flashColor = -1;
+  GLint flashIntensity = -1;
+  GLint flashEnabled = -1;
+  GLint shadowEnabled = -1;
 };
 
 inline GLint uniformLocation(GLuint program, const char *name) {
@@ -55,11 +65,22 @@ inline ModelProgram createModelProgram() {
   program.fogDensity = uniformLocation(program.id, "uFogDensity");
   program.fogMax = uniformLocation(program.id, "uFogMax");
   program.ambientColor = uniformLocation(program.id, "uAmbientColor");
+  program.lightSpace = uniformLocation(program.id, "uLightSpace");
+  program.flashPos = uniformLocation(program.id, "uFlashPos");
+  program.flashDir = uniformLocation(program.id, "uFlashDir");
+  program.flashRange = uniformLocation(program.id, "uFlashRange");
+  program.flashCosInner = uniformLocation(program.id, "uFlashCosInner");
+  program.flashCosOuter = uniformLocation(program.id, "uFlashCosOuter");
+  program.flashColor = uniformLocation(program.id, "uFlashColor");
+  program.flashIntensity = uniformLocation(program.id, "uFlashIntensity");
+  program.flashEnabled = uniformLocation(program.id, "uFlashEnabled");
+  program.shadowEnabled = uniformLocation(program.id, "uShadowEnabled");
 
   const GLint texture = uniformLocation(program.id, "uTexture");
   const GLint normalMap = uniformLocation(program.id, "uNormalMap");
   const GLint roughnessMap = uniformLocation(program.id, "uRoughnessMap");
   const GLint metallicMap = uniformLocation(program.id, "uMetallicMap");
+  const GLint shadowMap = uniformLocation(program.id, "uShadowMap");
   if (texture >= 0) {
     glUniform1i(texture, 0);
   }
@@ -71,6 +92,9 @@ inline ModelProgram createModelProgram() {
   }
   if (metallicMap >= 0) {
     glUniform1i(metallicMap, 3);
+  }
+  if (shadowMap >= 0) {
+    glUniform1i(shadowMap, 4);  // texture unit 4 reserved for the shadow map
   }
 
   if (program.fogColor >= 0) {
@@ -165,4 +189,55 @@ inline void drawRenderable(const ModelProgram &program,
                    nullptr);
   }
   glDisable(GL_POLYGON_OFFSET_FILL);
+}
+
+// shadow-pass draw: reuses the lit-pass geometry with a depth-only program,
+// only needs uLightSpace, uModel and uUseInstancing
+struct ShadowProgram {
+  GLuint id = 0;
+  GLint lightSpace = -1;
+  GLint model = -1;
+  GLint useInstancing = -1;
+};
+
+inline ShadowProgram createShadowProgram() {
+  ShadowProgram sp{};
+  sp.id = createProgram("shaders/shadow.vert", "shaders/shadow.frag");
+  glUseProgram(sp.id);
+  sp.lightSpace = uniformLocation(sp.id, "uLightSpace");
+  sp.model = uniformLocation(sp.id, "uModel");
+  sp.useInstancing = uniformLocation(sp.id, "uUseInstancing");
+  return sp;
+}
+
+inline void drawRenderableShadow(const ShadowProgram &sp,
+                                 const Renderable &renderable,
+                                 const glm::mat4 &lightSpace) {
+  if (renderable.indexCount <= 0) {
+    return;
+  }
+  glUseProgram(sp.id);
+  if (sp.lightSpace >= 0) {
+    glUniformMatrix4fv(sp.lightSpace, 1, GL_FALSE,
+                       glm::value_ptr(lightSpace));
+  }
+
+  const bool useInstancing =
+      renderable.instanceCount > 1 && renderable.instVBO != 0;
+  if (sp.useInstancing >= 0) {
+    glUniform1i(sp.useInstancing, useInstancing ? 1 : 0);
+  }
+  if (!useInstancing && sp.model >= 0) {
+    glUniformMatrix4fv(sp.model, 1, GL_FALSE,
+                       glm::value_ptr(renderable.model));
+  }
+
+  glBindVertexArray(renderable.VAO);
+  if (useInstancing) {
+    glDrawElementsInstanced(GL_TRIANGLES, renderable.indexCount,
+                            GL_UNSIGNED_INT, nullptr, renderable.instanceCount);
+  } else {
+    glDrawElements(GL_TRIANGLES, renderable.indexCount, GL_UNSIGNED_INT,
+                   nullptr);
+  }
 }

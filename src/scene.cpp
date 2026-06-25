@@ -8,10 +8,13 @@
 #include <vector>
 
 #include "camera.hpp"
+#include "flashlight.hpp"
+#include "goggles.hpp"
 #include "models.hpp"
 #include "renderer.hpp"
 #include "scene_loader.hpp"
 #include "seabed.hpp"
+#include "shadow_map.hpp"
 #include "skybox.hpp"
 #include "underwater_atmosphere.hpp"
 
@@ -19,6 +22,9 @@ int width = 800;
 int height = 600;
 
 ModelProgram modelProgram{};
+ShadowProgram shadowProgram{};
+ShadowMap shadowMap{};
+Goggles goggles{};
 std::vector<Renderable> renderables;
 Renderable sandRenderable;
 
@@ -56,6 +62,10 @@ void initModel(GLFWwindow *window) {
   glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);  // blends cubemap across face edges
 
   modelProgram = createModelProgram();
+  shadowProgram = createShadowProgram();
+  shadowMap = createShadowMap(1024, 1024);
+  goggles = createGoggles();
+
   renderables = loadSceneModels([window]() {
     if (window != nullptr) {
       glfwPollEvents();
@@ -108,12 +118,34 @@ void renderScene(GLFWwindow *window) {
   if (height == 0) {
     height = 1;
   }
-  glUseProgram(modelProgram.id);
 
   glm::mat4 view = getViewMatrix();
   glm::mat4 projection = glm::perspective(
       glm::radians(48.0f),
       static_cast<float>(width) / static_cast<float>(height), 0.1f, 150.0f);
+
+  const float sceneTime = static_cast<float>(glfwGetTime());
+
+  // shadow pass uses the unbiased VP, lit pass uses the biased one
+  const glm::mat4 lightViewProj =
+      flashlight::viewProjectionMatrix(1.0f, sceneTime);
+  const glm::mat4 lightSpaceBiased =
+      flashlight::biasedLightSpaceMatrix(1.0f, sceneTime);
+  const bool flashlightOn = flashlight::enabled;
+  if (flashlightOn) {
+    bindShadowMapForWriting(shadowMap);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(1.5f, 2.0f);
+    glUseProgram(shadowProgram.id);
+    for (const Renderable &renderable : renderables) {
+      drawRenderableShadow(shadowProgram, renderable, lightViewProj);
+    }
+    drawRenderableShadow(shadowProgram, sandRenderable, lightViewProj);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    unbindShadowMap(0, 0, width, height);
+  }
+
+  glUseProgram(modelProgram.id);
 
   if (modelProgram.view >= 0) {
     glUniformMatrix4fv(modelProgram.view, 1, GL_FALSE, glm::value_ptr(view));
@@ -125,6 +157,48 @@ void renderScene(GLFWwindow *window) {
   if (modelProgram.cameraPos >= 0) {
     glUniform3fv(modelProgram.cameraPos, 1, glm::value_ptr(cameraPosition));
   }
+
+  // flashlight uniforms; shadow texture is bound to unit 4 below
+  if (modelProgram.lightSpace >= 0) {
+    glUniformMatrix4fv(modelProgram.lightSpace, 1, GL_FALSE,
+                       glm::value_ptr(lightSpaceBiased));
+  }
+  const glm::vec3 flashPos = flashlight::position(sceneTime);
+  const glm::vec3 flashDir = flashlight::direction(sceneTime);
+  if (modelProgram.flashPos >= 0) {
+    glUniform3fv(modelProgram.flashPos, 1, glm::value_ptr(flashPos));
+  }
+  if (modelProgram.flashDir >= 0) {
+    glUniform3fv(modelProgram.flashDir, 1, glm::value_ptr(flashDir));
+  }
+  if (modelProgram.flashRange >= 0) {
+    glUniform1f(modelProgram.flashRange, flashlight::kRange);
+  }
+  // inner cone = full intensity, fades to zero at the outer cone
+  const float outerDeg = flashlight::kConeHalfAngleDeg;
+  const float innerDeg = outerDeg * 0.7f;
+  if (modelProgram.flashCosInner >= 0) {
+    glUniform1f(modelProgram.flashCosInner,
+                std::cos(glm::radians(innerDeg)));
+  }
+  if (modelProgram.flashCosOuter >= 0) {
+    glUniform1f(modelProgram.flashCosOuter,
+                std::cos(glm::radians(outerDeg)));
+  }
+  if (modelProgram.flashColor >= 0) {
+    glUniform3f(modelProgram.flashColor, 1.0f, 0.96f, 0.85f);
+  }
+  if (modelProgram.flashIntensity >= 0) {
+    glUniform1f(modelProgram.flashIntensity, 2.0f);
+  }
+  if (modelProgram.flashEnabled >= 0) {
+    glUniform1i(modelProgram.flashEnabled, flashlightOn ? 1 : 0);
+  }
+  if (modelProgram.shadowEnabled >= 0) {
+    glUniform1i(modelProgram.shadowEnabled, flashlightOn ? 1 : 0);
+  }
+  glActiveTexture(GL_TEXTURE4);
+  glBindTexture(GL_TEXTURE_2D, shadowMap.depthTexture);
 
   drawRenderable(modelProgram, sandRenderable);
   for (const Renderable &renderable : renderables) {
@@ -155,6 +229,9 @@ void renderScene(GLFWwindow *window) {
     glDepthFunc(GL_LESS);
   }
 
+  // Goggle overlay: drawn last as a screen-space HUD pass. No depth, blended.
+  drawGoggles(goggles, sceneTime);
+
   glfwSwapBuffers(window);
 }
 
@@ -162,6 +239,14 @@ void processInput(GLFWwindow *window) {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, true);
   }
+
+  // Flashlight toggle on F key. Edge-detected so one keypress flips once.
+  static bool fHeld = false;
+  const bool fNow = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+  if (fNow && !fHeld) {
+    flashlight::enabled = !flashlight::enabled;
+  }
+  fHeld = fNow;
 
   glm::vec3 inputDirection = glm::vec3(0.0f);
   glm::vec3 independentInputDirection = glm::vec3(0.0f);
@@ -224,10 +309,13 @@ void renderLoop(GLFWwindow *window) {
 void shutdown(GLFWwindow *) {
   renderables.push_back(sandRenderable);
   destroyRenderables(renderables);
+  destroyShadowMap(shadowMap);
+  destroyGoggles(goggles);
   glDeleteTextures(1, &skyboxTexture);
   glDeleteVertexArrays(1, &skyboxRenderable.VAO);
   glDeleteBuffers(1, &skyboxRenderable.VBO);
   glDeleteBuffers(1, &skyboxRenderable.EBO);
   deleteProgram(skyboxProgram);
+  deleteProgram(shadowProgram.id);
   deleteProgram(modelProgram.id);
 }

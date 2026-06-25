@@ -48,14 +48,21 @@ endif()
 
 target_link_libraries(perlin PRIVATE glm::glm)
 
-add_custom_command(TARGET underwater-computer-graphics POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:underwater-computer-graphics>/shaders)
+# Copy shaders/img/models whenever any file in those directories changes.
+# Implemented as a separate custom target so ninja actually re-runs the copy
+# even when no C++ source has been touched.
+file(GLOB_RECURSE SHADER_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/shaders/*)
+file(GLOB_RECURSE IMG_FILES     CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/img/*)
+file(GLOB_RECURSE MODEL_FILES   CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/models/*)
 
-add_custom_command(TARGET underwater-computer-graphics POST_BUILD
+add_custom_target(copy_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/img $<TARGET_FILE_DIR:underwater-computer-graphics>/img)
+        ${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:underwater-computer-graphics>/shaders
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/img     $<TARGET_FILE_DIR:underwater-computer-graphics>/img
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/models  $<TARGET_FILE_DIR:underwater-computer-graphics>/models
+    DEPENDS ${SHADER_FILES} ${IMG_FILES} ${MODEL_FILES}
+    VERBATIM)
 
-add_custom_command(TARGET underwater-computer-graphics POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/models $<TARGET_FILE_DIR:underwater-computer-graphics>/models)
+add_dependencies(underwater-computer-graphics copy_assets)

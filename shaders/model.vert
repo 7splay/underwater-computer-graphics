@@ -12,12 +12,14 @@ layout (location = 7) in vec4 aInstRow3;
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
+uniform mat4 uLightSpace;  // flashlight projection * view, for shadow lookup
 uniform int uUseInstancing;
 
 out vec3 vNormal;
 out vec2 vTexCoord;
 out mat3 vTBN;
 out vec3 vWorldPos;
+out vec4 vLightSpacePos;  // world pos in light clip space
 
 void main() {
     mat4 model = (uUseInstancing == 1)
@@ -26,6 +28,7 @@ void main() {
 
     vec4 worldPos = model * vec4(aPos, 1.0);
     vWorldPos = worldPos.xyz;
+    vLightSpacePos = uLightSpace * worldPos;
     gl_Position = uProjection * uView * worldPos;
 
     mat3 normalMatrix = mat3(transpose(inverse(model)));
@@ -34,7 +37,6 @@ void main() {
     T = normalize(T - dot(T, N) * N);
     vec3 B = cross(N, T) * aTangent.w;
 
-    // TBN passed to fragment shader for normal mapping.
     vTBN = mat3(T, B, N);
     vNormal = N;
     vTexCoord = aTexCoord;
