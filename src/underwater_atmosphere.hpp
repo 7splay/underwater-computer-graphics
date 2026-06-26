@@ -7,8 +7,11 @@ namespace underwater {
 constexpr glm::vec3 kClearColor{0.03f, 0.10f, 0.18f};   // background / water tint
 constexpr glm::vec3 kFogColor{0.03f, 0.11f, 0.19f};     // exponential fog
 constexpr glm::vec3 kAmbientColor{0.025f, 0.06f, 0.09f}; // PBR ambient term
-constexpr float kFogDensity = 0.028f;
-constexpr float kFogMax = 0.92f;
+// density lowered so distant geometry fades gradually and the procedural
+// skybox still reads through gaps in the reef. previous 0.028 fogged everything
+// past ~50m to ~75% and the skybox never appeared
+constexpr float kFogDensity = 0.018f;
+constexpr float kFogMax = 0.85f;
 
 // Visible sun direction (normalized in shaders). Used by the procedural skybox
 // to place a soft glow; shared so the spot in the sky matches the scene lighting.

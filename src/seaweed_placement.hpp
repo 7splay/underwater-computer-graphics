@@ -12,10 +12,10 @@
 
 namespace {
 constexpr float kClusterSeaweedSceneHalf = 50.0f;
-constexpr std::size_t kMaxClusterSeaweed = 40;
-constexpr float kClusterSeaweedMinSpacing = 6.5f;
-constexpr float kClusterSeaweedGridStep = 10.0f;
-constexpr float kClusterSeaweedPatchThreshold = 0.46f;
+constexpr std::size_t kMaxClusterSeaweed = 140;
+constexpr float kClusterSeaweedMinSpacing = 4.5f;
+constexpr float kClusterSeaweedGridStep = 6.0f;
+constexpr float kClusterSeaweedPatchThreshold = 0.42f;
 constexpr float kClusterPatchOffsetX = 401.0f;
 constexpr float kClusterPatchOffsetZ = 173.0f;
 }  // namespace

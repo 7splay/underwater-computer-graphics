@@ -77,7 +77,7 @@ inline void updateCameraMovement(glm::vec3 inputDirection,
   cameraPosition += cameraVelocity * deltaTime;
 }
 
-inline void clampCameraToScene(const SeabedParams &seabed = {}) {
+inline void clampCameraToScene(const SeabedParams &seabed = kSceneSeabed) {
   if (cameraPosition.x < -kCameraHalfExtentX) {
     cameraPosition.x = -kCameraHalfExtentX;
     if (cameraVelocity.x < 0.0f) {

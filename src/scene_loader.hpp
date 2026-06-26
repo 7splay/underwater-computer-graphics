@@ -48,9 +48,9 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
     }
   };
 
-  constexpr std::size_t kFishInstancesPerModel = 14;
-  constexpr std::size_t kFishesInstancesPerModel = 10;
-  const SeabedParams seabed{};
+  constexpr std::size_t kFishInstancesPerModel = 40;
+  constexpr std::size_t kFishesInstancesPerModel = 24;
+  const SeabedParams &seabed = kSceneSeabed;
 
   std::vector<fs::path> modelFiles;
   for (const auto &entry : fs::directory_iterator("models")) {
@@ -120,7 +120,7 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
               << " cluster seaweed using noise scattering." << std::endl;
     if (!clusterTransforms.empty()) {
       LodInstancedGroup group = createLodInstancedGroup(
-          clusterSeaweed, clusterTransforms, 16.0f, 24.0f, 1.15f, 2.4f, false);
+          clusterSeaweed, clusterTransforms, 16.0f, 24.0f, 1.15f, 2.4f, true);
       scene.groups.push_back(std::move(group));
     }
   }
@@ -134,10 +134,11 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
       if (transforms.empty()) {
         continue;
       }
-      // collect one anchor per coral variant so scene.cpp can build a
-      // Catmull-Rom patrol loop around each cluster
-      for (const glm::mat4 &t : transforms) {
-        coralAnchors.push_back(glm::vec3(t[3]));
+      // collect one anchor per coral variant (colony center) so scene.cpp can
+      // build a Catmull-Rom patrol loop around each colony. every-coral anchors
+      // would create ~110 patrol loops and overload the fish AI grid
+      if (!transforms.empty()) {
+        coralAnchors.push_back(glm::vec3(transforms.front()[3]));
       }
 
       const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
@@ -193,27 +194,16 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
             fishPlacementNoise(fishInstanceIndex++, seabed, meshScale);
         const float placementScale = glm::length(transform[0]);
         const glm::vec3 pos(transform[3]);
-        // assign each fish to its nearest coral anchor's patrol loop, so the
-        // school breaks into smaller groups orbiting different coral clusters
-        std::size_t patrol = 0;
-        if (!coralAnchors.empty()) {
-          float bestDist = std::numeric_limits<float>::max();
-          for (std::size_t a = 0; a < coralAnchors.size(); ++a) {
-            const glm::vec2 d2(pos.x - coralAnchors[a].x, pos.z - coralAnchors[a].z);
-            const float d = glm::dot(d2, d2);
-            if (d < bestDist) {
-              bestDist = d;
-              patrol = a;
-            }
-          }
-        }
+        // patrol assignment is deferred to scene.cpp where the actual patrol
+        // loops are built (decoupled from coral placement since corals moved
+        // to one corner of the playable area)
         const std::size_t idx = fishRenderables.size();
         fishRenderables.push_back(cloneRenderable(*primaryMesh, transform));
         FishSpawn spawn;
         spawn.renderableIndex = idx;
         spawn.position = pos;
         spawn.scale = placementScale;
-        spawn.patrolIndex = patrol;
+        spawn.patrolIndex = 0;
         fishSpawns.push_back(spawn);
       }
       ++backgroundIndex;

@@ -13,8 +13,13 @@ inline bool enabled = true;
 
 constexpr float kConeHalfAngleDeg = 21.0f;  // 42 total cone
 constexpr float kRange = 50.0f;
-constexpr float kNear = 0.3f;
-constexpr float kFar = 35.0f;
+// near plane pushed well out: with the old tiny near, perspective depth was so
+// nonlinear that everything 15-35m away mapped to 0.94-1.0, so a coral and the
+// sand behind it differed by less than the shadow bias and cast shadows
+// vanished. a larger near spreads the usable depth range across the distances
+// we actually care about (anything closer just won't cast)
+constexpr float kNear = 2.0f;
+constexpr float kFar = 45.0f;
 // shadow frustum is wider than the lit cone so casters at the beam edge still
 // rasterise fully into the depth map, avoiding cropped shadows
 constexpr float kShadowFrustumExtraDeg = 6.0f;

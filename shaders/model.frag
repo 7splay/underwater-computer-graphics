@@ -125,19 +125,19 @@ float shadowFactor(vec3 normal) {
     if (uShadowEnabled == 0) return 1.0;
 
     vec3 proj = vLightSpacePos.xyz / vLightSpacePos.w;
-    // uLightSpace already includes the [0,1] bias matrix from the CPU
     if (proj.z > 1.0) return 1.0;
     if (proj.x < 0.0 || proj.x > 1.0 || proj.y < 0.0 || proj.y > 1.0) {
         return 1.0;
     }
 
-    // slope-scale bias: more offset on grazing surfaces to avoid acne
+    // slope-scaled bias to avoid acne; small because the wider near plane
+    // gives enough depth precision to keep real cast shadows intact
     vec3 L = normalize(uFlashPos - vWorldPos);
     float NdotL = max(dot(normalize(normal), L), 0.0);
-    float bias = max(0.0045 * (1.0 - NdotL), 0.0012);
+    float bias = max(0.0015 * (1.0 - NdotL), 0.0004);
 
     vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0));
-    float spread = 4.0 * texelSize.x;  // wider spread = softer shadows
+    float spread = 1.5 * texelSize.x;
     const vec2 poisson[12] = vec2[12](
         vec2(-0.326212, -0.405805), vec2(-0.840297, -0.073629),
         vec2(-0.695260,  0.457058), vec2(-0.203280,  0.620531),
@@ -151,8 +151,7 @@ float shadowFactor(vec3 normal) {
         vec2 uv = proj.xy + poisson[i] * spread;
         shadow += texture(uShadowMap, vec3(uv, proj.z - bias));
     }
-    shadow /= 12.0;
-    return shadow;
+    return shadow / 12.0;
 }
 
 void main() {
@@ -227,8 +226,9 @@ void main() {
     // occluded fragments while the cone test gives the soft beam
     if (uFlashEnabled) {
         float spot = spotlightIntensity(vWorldPos);
-        // floor the shadow so it's never fully black (underwater scatter)
-        float shadow = mix(0.22, 1.0, shadowFactor(N));
+        // floor the shadow so it's never fully black (underwater scatter).
+        // lower floor = darker shadow = more visible silhouette
+        float shadow = mix(0.08, 1.0, shadowFactor(N));
         if (spot > 0.0) {
             vec3 L = normalize(uFlashPos - vWorldPos);
             Lo += evaluatePbrLight(N, V, L, uFlashColor,

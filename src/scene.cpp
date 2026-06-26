@@ -11,6 +11,7 @@
 #include "fish.hpp"
 #include "flashlight.hpp"
 #include "goggles.hpp"
+#include "instancing.hpp"
 #include "models.hpp"
 #include "lod_system.hpp"
 #include "renderer.hpp"
@@ -70,6 +71,8 @@ float sandDensity=1.0f;
 float sandAmplitude=5.0f;
 float sandSmoothness=50.0f;
 glm::mat4 sandModel=glm::translate(glm::mat4(1.0f), glm::vec3(.0f,-5.0f,.0f));
+// sand params mirror kSceneSeabed (in seabed_height.hpp) so that any height
+// query against the seabed returns the same surface the mesh was generated with
 
 glm::vec3 lastLodCameraPos(0.0f);
 bool lodCameraInitialized = false;
@@ -100,37 +103,81 @@ void initModel(GLFWwindow *window) {
   // arranged as a wobbly circle above the anchor at cruise depth. loop Y is
   // clamped above the actual seabed at each control point so scouts never
   // dip underground and trigger seabed-clamp bouncing
+  // patrol loops: scatter anchors on a coarse jittered grid across the whole
+  // playable area ([-45, 45] x [-45, 45]) instead of reusing coral anchors.
+  // coral anchors now sit near the ship at one corner of the map, so reusing
+  // them stacked every patrol on top of each other. using our own anchors
+  // also lets us pick a fixed count regardless of how many corals exist
   patrols.clear();
-  for (const glm::vec3 &anchor : sceneLoad.coralAnchors) {
-    PatrolLoop loop;
-    loop.center = anchor;
-    loop.speed = 0.04f;
-    const std::size_t kPoints = 6;
-    for (std::size_t k = 0; k < kPoints; ++k) {
-      const float a = static_cast<float>(k) / static_cast<float>(kPoints) * glm::two_pi<float>();
-      const float r = 6.0f + 1.5f * std::sin(a * 2.0f + anchor.x);
-      const float px = anchor.x + std::cos(a) * r;
-      const float pz = anchor.z + std::sin(a) * r;
-      const float seabedY = sampleSeabedWorldHeight(px, pz, kSeabedParams);
-      // cruise 2-4m above the seabed with smooth variation, never below
-      const float variation = 2.0f * std::sin(a * 3.0f + anchor.z);
-      const float py = std::max(seabedY + 2.0f, anchor.y + 1.0f + variation);
-      loop.points.push_back(glm::vec3(px, py, pz));
+  constexpr std::size_t kPatrolGrid = 4;       // 4x4 = 16 candidate cells
+  constexpr float kPatrolExtent = 45.0f;       // stay inside the +/-50 camera box
+  constexpr float kPatrolCell =
+      (2.0f * kPatrolExtent) / static_cast<float>(kPatrolGrid - 1);
+  for (std::size_t iz = 0; iz < kPatrolGrid; ++iz) {
+    for (std::size_t ix = 0; ix < kPatrolGrid; ++ix) {
+      // deterministic jitter so the layout is stable across frames
+      const float jx = std::sin(ix * 12.9898f + iz * 78.233f) * 43758.5453f;
+      const float jz = std::cos(ix * 39.3468f + iz * 11.135f) * 12543.987f;
+      const float jitterX = (jx - std::floor(jx) - 0.5f) * kPatrolCell * 0.8f;
+      const float jitterZ = (jz - std::floor(jz) - 0.5f) * kPatrolCell * 0.8f;
+      const float anchorX =
+          -kPatrolExtent + static_cast<float>(ix) * kPatrolCell + jitterX;
+      const float anchorZ =
+          -kPatrolExtent + static_cast<float>(iz) * kPatrolCell + jitterZ;
+      const float anchorSeabedY =
+          sampleSeabedWorldHeight(anchorX, anchorZ, kSeabedParams);
+
+      PatrolLoop loop;
+      loop.center = glm::vec3(anchorX, anchorSeabedY, anchorZ);
+      loop.speed = 0.04f;
+      const std::size_t kPoints = 6;
+      for (std::size_t k = 0; k < kPoints; ++k) {
+        const float a = static_cast<float>(k) / static_cast<float>(kPoints) * glm::two_pi<float>();
+        const float r = 6.0f + 1.5f * std::sin(a * 2.0f + anchorX);
+        const float px = anchorX + std::cos(a) * r;
+        const float pz = anchorZ + std::sin(a) * r;
+        const float seabedY = sampleSeabedWorldHeight(px, pz, kSeabedParams);
+        // cruise 2-4m above the seabed with smooth variation, never below
+        const float variation = 2.0f * std::sin(a * 3.0f + anchorZ);
+        const float py = std::max(seabedY + 2.0f, anchorSeabedY + 1.0f + variation);
+        loop.points.push_back(glm::vec3(px, py, pz));
+      }
+      patrols.push_back(loop);
     }
-    patrols.push_back(loop);
   }
 
-  // build fish entities, assigning each to its nearest patrol loop
+  // build fish entities. patrol assignment is re-derived here against the
+  // actual patrols vector (built above) instead of trusting spawn.patrolIndex,
+  // because spawn.patrolIndex was computed in scene_loader against coral
+  // anchors which no longer match the patrol anchors
   for (const FishSpawn &spawn : sceneLoad.fishSpawns) {
     if (spawn.renderableIndex >= fishRenderables.size()) continue;
+    std::size_t patrol = 0;
+    if (!patrols.empty()) {
+      float bestDist = std::numeric_limits<float>::max();
+      for (std::size_t p = 0; p < patrols.size(); ++p) {
+        const glm::vec2 d2(spawn.position.x - patrols[p].center.x,
+                           spawn.position.z - patrols[p].center.z);
+        const float d = glm::dot(d2, d2);
+        if (d < bestDist) {
+          bestDist = d;
+          patrol = p;
+        }
+      }
+    }
     fish.push_back(makeFish(&fishRenderables[spawn.renderableIndex],
-                            spawn.position, spawn.scale, spawn.patrolIndex));
+                            spawn.position, spawn.scale, patrol));
     fish.back().patrolT =
         std::fmod(static_cast<float>(spawn.renderableIndex) * 0.17f, 1.0f);
     syncFishModelMatrix(fish.back());
   }
-  sandRenderable = generateSand(256, 256, sandDensity, sandAmplitude,
-                              sandSmoothness, sandModel);
+  sandRenderable = generateSand(kSceneSeabed.resX, kSceneSeabed.resZ,
+                                kSceneSeabed.gap, kSceneSeabed.amplitude,
+                                kSceneSeabed.smoothness,
+                                glm::translate(glm::mat4(1.0f),
+                                               glm::vec3(0.0f,
+                                                         kSceneSeabed.modelY,
+                                                         0.0f)));
 
   skyboxProgram = createProgram("shaders/skybox.vert", "shaders/skybox.frag");
   skyboxRenderable = makeSkybox();
@@ -211,19 +258,30 @@ void renderScene(GLFWwindow *window) {
   const bool flashlightOn = flashlight::enabled;
   if (flashlightOn) {
     bindShadowMapForWriting(shadowMap);
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(1.5f, 2.0f);
     glUseProgram(shadowProgram.id);
     for (const Renderable &renderable : lodScene.staticRenderables) {
       drawRenderableShadow(shadowProgram, renderable, lightViewProj);
     }
-    for (const LodInstancedGroup &group : lodScene.groups) {
-      if (group.castsShadow) {
+    for (LodInstancedGroup &group : lodScene.groups) {
+      // shadow pass must render EVERY instance of a caster, not just the
+      // high-tier bucket. updateLodScene buckets by player distance, so when
+      // a coral is far from the player it sits in med/low and group.high has
+      // 0 instances, which silently dropped it from the shadow map. push all
+      // source matrices into the high-tier VBO before drawing shadows
+      if (group.castsShadow && !group.sourceMatrices.empty()) {
+        uploadInstanceMatrices(group.high, group.sourceMatrices);
         drawRenderableShadow(shadowProgram, group.high, lightViewProj);
+        for (Renderable &extra : group.extraHigh) {
+          drawRenderableShadow(shadowProgram, extra, lightViewProj);
+        }
       }
     }
     drawRenderableShadow(shadowProgram, sandRenderable, lightViewProj);
-    glDisable(GL_POLYGON_OFFSET_FILL);
+    // fish cast shadows too; their model matrices were updated this frame by
+    // updateFish before renderScene, so the depth pass matches their pose
+    for (const Renderable &renderable : fishRenderables) {
+      drawRenderableShadow(shadowProgram, renderable, lightViewProj);
+    }
     unbindShadowMap(0, 0, width, height);
   }
 

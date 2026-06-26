@@ -14,6 +14,14 @@ struct SeabedParams {
   float modelY = -5.0f;
 };
 
+// single source of truth for the sand mesh dimensions used both by generateSand
+// (scene.cpp) and by every sampleSeabedWorldHeight caller (coral/seaweed/shark
+// placement in scene_loader, fish floor clamp in fish.hpp). desyncing any of
+// these leaves props floating in the air or buried under the floor
+inline constexpr SeabedParams kSceneSeabed{
+    /*resX=*/256, /*resZ=*/256, /*gap=*/1.0f, /*amplitude=*/5.0f,
+    /*smoothness=*/50.0f, /*modelY=*/-5.0f};
+
 inline siv::PerlinNoise seabedNoise{42u};
 
 inline float sampleSeabedWorldHeight(float worldX, float worldZ,

@@ -64,7 +64,11 @@ constexpr std::size_t kBaitMax = 12;
 
 // clearance above procedurally generated seabed so fish never clip through sand
 constexpr float kSeabedClearance = 1.5f;
-inline SeabedParams kSeabedParams{};
+// single shared source-of-truth declared in seabed_height.hpp; keeps fish floor
+// clamps, bait landing, coral/seaweed/shark placement, and the actual sand mesh
+// in lockstep. previously each call site had its own default-constructed copy
+// (128x128) that drifted from the 256x256 mesh after the LOD merge
+inline const SeabedParams &kSeabedParams = kSceneSeabed;
 
 struct Fish {
   Renderable *renderable = nullptr;

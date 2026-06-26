@@ -226,8 +226,6 @@ inline void drawRenderable(const ModelProgram &program,
   if (useInstancing) {
     bindInstancedAttributes(renderable.instVBO);
   }
-  glEnable(GL_POLYGON_OFFSET_FILL);
-  glPolygonOffset(1.0f, 1.0f);
   if (useInstancing) {
     glDrawElementsInstanced(GL_TRIANGLES, renderable.indexCount,
                             GL_UNSIGNED_INT, nullptr, renderable.instanceCount);
@@ -235,7 +233,6 @@ inline void drawRenderable(const ModelProgram &program,
     glDrawElements(GL_TRIANGLES, renderable.indexCount, GL_UNSIGNED_INT,
                    nullptr);
   }
-  glDisable(GL_POLYGON_OFFSET_FILL);
   if (disableCull) {
     glEnable(GL_CULL_FACE);
   }
@@ -248,6 +245,8 @@ struct ShadowProgram {
   GLint lightSpace = -1;
   GLint model = -1;
   GLint useInstancing = -1;
+  GLint alphaMode = -1;
+  GLint alphaCutoff = -1;
 };
 
 inline ShadowProgram createShadowProgram() {
@@ -257,14 +256,22 @@ inline ShadowProgram createShadowProgram() {
   sp.lightSpace = uniformLocation(sp.id, "uLightSpace");
   sp.model = uniformLocation(sp.id, "uModel");
   sp.useInstancing = uniformLocation(sp.id, "uUseInstancing");
+  sp.alphaMode = uniformLocation(sp.id, "uAlphaMode");
+  sp.alphaCutoff = uniformLocation(sp.id, "uAlphaCutoff");
+  const GLint tex = uniformLocation(sp.id, "uTexture");
+  if (tex >= 0) glUniform1i(tex, 0);
+  const GLint opacity = uniformLocation(sp.id, "uOpacityMap");
+  if (opacity >= 0) glUniform1i(opacity, 1);
   return sp;
 }
 
 inline void drawRenderableShadow(const ShadowProgram &sp,
                                  const Renderable &renderable,
                                  const glm::mat4 &lightSpace) {
-  if (renderable.indexCount <= 0 || renderable.isBillboard ||
-      renderable.useAlphaCutout) {
+  // billboards are camera-facing impostors; the depth pass has no camera so
+  // they'd cast a flat misoriented quad. everything else (incl. cutout meshes)
+  // is rendered, with alpha-testing below to keep seaweed/fin silhouettes
+  if (renderable.indexCount <= 0 || renderable.isBillboard) {
     return;
   }
   if (renderable.instVBO != 0 && renderable.instanceCount <= 0) {
@@ -274,6 +281,28 @@ inline void drawRenderableShadow(const ShadowProgram &sp,
   if (sp.lightSpace >= 0) {
     glUniformMatrix4fv(sp.lightSpace, 1, GL_FALSE,
                        glm::value_ptr(lightSpace));
+  }
+
+  // pick the alpha-test mode matching the lit pass so casters discard the same
+  // transparent texels. solid meshes (mode 0) skip the texture sample entirely
+  int alphaMode = 0;
+  if (renderable.useAlphaCutout) {
+    alphaMode = renderable.useOpacityCutout ? 2 : 3;
+  } else if (renderable.useAlphaTest) {
+    alphaMode = 1;
+  }
+  if (sp.alphaMode >= 0) {
+    glUniform1i(sp.alphaMode, alphaMode);
+  }
+  if (sp.alphaCutoff >= 0) {
+    glUniform1f(sp.alphaCutoff, renderable.alphaCutoff);
+  }
+  if (alphaMode == 2) {
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, renderable.opacityTexture);
+  } else if (alphaMode != 0) {
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderable.texture);
   }
 
   const bool useInstancing =

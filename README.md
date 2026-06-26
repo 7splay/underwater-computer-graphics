@@ -37,7 +37,7 @@
 | 1 | `F` toggle flashlight | spotlight + shadow map on/off |
 | 2 | flashlight cone hits a fish | ray-sphere test within 18m → fish enters FLEE |
 | 3 | Left mouse throws bait | projectile arc; once landed, nearby fish enter CHASE and seek the bait; consumed on contact |
-| optional | `E` scare-all | every fish within 30 m of the camera enters FLEE with jittered timers |
+| 4 | `E` scare-all | every fish within 30 m of the camera enters FLEE with jittered timers |
 
 ### Fish state machine
 
@@ -45,9 +45,9 @@ Each fish owns one of three states plus a per-state timer and a global cooldown.
 
 ```
                        flashlight cone hits fish (18 m, ray-sphere)
-                ┌────────────────────────────────────────────────────┐
-                ▼                                                    │
-            ┌────────┐   bait within 20 m   ┌────────┐               │
+                ┌─────────────────────────────────────────────────────┐
+                ▼                                                     │
+            ┌────────┐   bait within 20 m    ┌────────┐               │
    ────────►│ SWIM   │──────────────────────►│ CHASE  │               │
             │ patrol │◄──────────────────────│ seek   │               │
             │ +boids │  bait eaten / timeout │ bait   │               │

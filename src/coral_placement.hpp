@@ -19,16 +19,19 @@ constexpr float kDensityOffsetX = 137.31f;
 constexpr float kDensityOffsetZ = 419.73f;
 constexpr float kPatchScale = 19.0f;
 
-constexpr float kShipAnchorX = 0.0f;
-constexpr float kShipAnchorZ = -22.0f;
+// ship anchor placed outside the camera box (which is +/-50 in X/Z) so the
+// player can never reach it (no collision implemented). ship scale is ~11m so
+// part of the hull still pokes into view at the back-left corner
+constexpr float kShipAnchorX = -60.0f;
+constexpr float kShipAnchorZ = -60.0f;
 constexpr float kSceneHalfExtent = 54.0f;
-constexpr std::size_t kMaxTotalCorals = 50;
+constexpr std::size_t kMaxTotalCorals = 110;
 constexpr float kShipColonyMinDist = 5.5f;
 constexpr float kShipColonyNearMaxDist = 18.0f;
-constexpr float kMaxNearReefColonies = 6.0f;
-constexpr float kMinColonySeparation = 6.0f;
-constexpr float kColonyCoralsMin = 4.0f;
-constexpr float kColonyCoralsMax = 6.0f;
+constexpr float kMaxNearReefColonies = 10.0f;
+constexpr float kMinColonySeparation = 5.0f;
+constexpr float kColonyCoralsMin = 5.0f;
+constexpr float kColonyCoralsMax = 9.0f;
 constexpr float kColonySpread = 1.85f;
 constexpr float kScatterGridStep = 7.0f;
 constexpr float kScatterMinSpacing = 4.0f;
@@ -397,13 +400,15 @@ inline glm::mat4 fishPlacementNoise(std::size_t index, const SeabedParams &seabe
   const float nz = seabedNoise.octave2D_01(seedZ, seedX, 3);
   const float ny = seabedNoise.octave2D_01(seedY, seedX * 0.5f, 2);
 
+  // spread fish across the full playable area [-42, 42] x [-42, 42] so they
+  // distribute across all 16 patrol loops instead of clustering on a few
   float x = -42.0f + nx * 84.0f;
-  float z = -42.0f + nz * 38.0f;
+  float z = -42.0f + nz * 84.0f;
   const float seabedY = sampleSeabedWorldHeight(x, z, seabed);
   float y = seabedY + 1.2f + ny * 7.5f;
 
   x = std::clamp(x, -42.0f, 42.0f);
-  z = std::clamp(z, -42.0f, -2.0f);
+  z = std::clamp(z, -42.0f, 42.0f);
   y = std::clamp(y, seabedY + 0.8f, 4.5f);
 
   const float rotation =
