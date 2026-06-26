@@ -5,6 +5,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 #include "camera.hpp"
@@ -34,6 +35,10 @@ std::vector<Fish> fish;
 std::vector<PatrolLoop> patrols;
 Renderable sandRenderable;
 Renderable baitMesh;  // worm model drawn at each active bait position
+
+// object-density entry parameter (set from argv in main): scales how many
+// corals, seaweed and fish are generated. 1.0 = default scene
+float objectDensity = 1.0f;
 
 // debug full-scene light toggle (L key): flattens ambient so the scene can be
 // inspected without the spotlight. independent of flashlight::enabled
@@ -91,11 +96,13 @@ void initModel(GLFWwindow *window) {
   shadowMap = createShadowMap(1024, 1024);
   goggles = createGoggles();
 
-  SceneLoadResult sceneLoad = loadSceneModels([window]() {
-    if (window != nullptr) {
-      glfwPollEvents();
-    }
-  });
+  SceneLoadResult sceneLoad = loadSceneModels(
+      [window]() {
+        if (window != nullptr) {
+          glfwPollEvents();
+        }
+      },
+      objectDensity);
   lodScene = std::move(sceneLoad.lod);
   fishRenderables = std::move(sceneLoad.fishRenderables);
 
@@ -201,7 +208,10 @@ void initModel(GLFWwindow *window) {
   skyboxSunColorLoc = glGetUniformLocation(skyboxProgram, "uSunColor");
   glUseProgram(skyboxProgram);
   if (skyboxSamplerLoc >= 0) {
-    glUniform1i(skyboxSamplerLoc, 0);
+    // dedicated unit 6 for the cubemap: keeping it off unit 0 avoids aliasing a
+    // samplerCube and the model sampler2D on the same unit, which made macOS
+    // log "unit 0 ... bound to sampler type (Float) ... unloadable"
+    glUniform1i(skyboxSamplerLoc, 6);
   }
   if (skyboxSunDirLoc >= 0) {
     glUniform3fv(skyboxSunDirLoc, 1, glm::value_ptr(underwater::kSunDirection));
@@ -468,7 +478,7 @@ void renderScene(GLFWwindow *window) {
       glUniformMatrix4fv(skyboxProjLoc, 1, GL_FALSE,
                          glm::value_ptr(projection));
     }
-    glActiveTexture(GL_TEXTURE0);
+    glActiveTexture(GL_TEXTURE6);
     glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
     glBindVertexArray(skyboxRenderable.VAO);
     glDrawElements(GL_TRIANGLES, skyboxRenderable.indexCount, GL_UNSIGNED_INT,
@@ -559,11 +569,26 @@ void processMouse(GLFWwindow *, double xPos, double yPos) {
 
 void renderLoop(GLFWwindow *window) {
   lastTime = static_cast<float>(glfwGetTime());
+  // fps shown in the window title, averaged over a short window so the number
+  // is readable instead of flickering every frame
+  float fpsAccum = 0.0f;
+  int fpsFrames = 0;
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
     float time = static_cast<float>(glfwGetTime());
     deltaTime = time - lastTime;
     lastTime = time;
+
+    fpsAccum += deltaTime;
+    ++fpsFrames;
+    if (fpsAccum >= 0.5f) {
+      const int fps = static_cast<int>(fpsFrames / fpsAccum + 0.5f);
+      char title[64];
+      std::snprintf(title, sizeof(title), "Underwater Scene | %d FPS", fps);
+      glfwSetWindowTitle(window, title);
+      fpsAccum = 0.0f;
+      fpsFrames = 0;
+    }
 
     processInput(window);
     updateFish(fish, deltaTime, time, patrols, flashlight::enabled,

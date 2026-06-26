@@ -3,7 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <cmath>
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 
@@ -46,17 +46,21 @@ inline float clusterSeaweedDetailNoise(float worldX, float worldZ,
 }
 
 inline std::vector<glm::mat4>
-generateClusterSeaweedPlacements(const SeabedParams &seabed) {
+generateClusterSeaweedPlacements(const SeabedParams &seabed,
+                                 float density = 1.0f) {
+  // scale the seaweed budget by density; 1.0 keeps the original count
+  const std::size_t maxSeaweed = std::max<std::size_t>(
+      1, static_cast<std::size_t>(kMaxClusterSeaweed * density));
   std::vector<glm::mat4> transforms;
-  transforms.reserve(kMaxClusterSeaweed);
+  transforms.reserve(maxSeaweed);
   std::vector<glm::vec2> placed;
-  placed.reserve(kMaxClusterSeaweed);
+  placed.reserve(maxSeaweed);
 
   for (float gridX = -kClusterSeaweedSceneHalf; gridX <= kClusterSeaweedSceneHalf;
        gridX += kClusterSeaweedGridStep) {
     for (float gridZ = -kClusterSeaweedSceneHalf; gridZ <= kClusterSeaweedSceneHalf;
          gridZ += kClusterSeaweedGridStep) {
-      if (transforms.size() >= kMaxClusterSeaweed) {
+      if (transforms.size() >= maxSeaweed) {
         return transforms;
       }
 

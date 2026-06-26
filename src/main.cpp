@@ -1,11 +1,21 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#include <cstdlib>
 #include <iostream>
 
 #include "scene.cpp"
 
-int main() {
+int main(int argc, char **argv) {
+  // optional object-density entry parameter: ./underwater-computer-graphics [density]
+  // higher packs in more corals/seaweed/fish, lower thins the scene out
+  if (argc > 1) {
+    const float density = static_cast<float>(std::atof(argv[1]));
+    if (density > 0.0f) {
+      objectDensity = density;
+    }
+  }
+
   if (!glfwInit()) {
     std::cerr << "Failed to initialize GLFW" << std::endl;
     return -1;

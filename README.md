@@ -103,3 +103,13 @@ cmake --build build
 ```bash
 ./build/underwater-computer-graphics
 ```
+
+### Object density (optional)
+
+The executable takes an optional density multiplier that scales how many corals, seaweed and fish are generated. `1.0` is the default scene; higher packs in more, lower thins it out (useful on slower machines):
+```bash
+./build/underwater-computer-graphics 0.5   # sparser, faster
+./build/underwater-computer-graphics 2.0   # denser
+```
+
+The window title shows the current FPS.

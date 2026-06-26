@@ -104,12 +104,15 @@ inline glm::mat4 buildCoralTransform(float x, float z, float yRotation,
 struct CoralPlacementResult {
   std::vector<std::vector<glm::mat4>> perVariantTransforms;
   std::size_t totalCount = 0;
+  // runtime cap, scaled by the object-density entry parameter; defaults to the
+  // base budget so the unscaled path behaves exactly as before
+  std::size_t maxCount = kMaxTotalCorals;
 };
 
 inline void addReefColony(const glm::vec2 &center, std::size_t variantCount,
                           const SeabedParams &seabed,
                           CoralPlacementResult &result) {
-  if (result.totalCount >= kMaxTotalCorals) {
+  if (result.totalCount >= result.maxCount) {
     return;
   }
   if (sampleSeabedSlope(center.x, center.y, seabed) > 1.45f) {
@@ -135,7 +138,7 @@ inline void addReefColony(const glm::vec2 &center, std::size_t variantCount,
                            (kColonyCoralsMax - kColonyCoralsMin + 0.99f));
 
   for (int i = 0; i < coralCount; ++i) {
-    if (result.totalCount >= kMaxTotalCorals) {
+    if (result.totalCount >= result.maxCount) {
       break;
     }
     const float ringAngle =
@@ -238,7 +241,7 @@ inline bool isWithinScene(float worldX, float worldZ) {
 inline void addScatteredCoral(float worldX, float worldZ, std::size_t variantCount,
                               const SeabedParams &seabed, float colonyStrength,
                               CoralPlacementResult &result) {
-  if (result.totalCount >= kMaxTotalCorals) {
+  if (result.totalCount >= result.maxCount) {
     return;
   }
   if (!isWithinScene(worldX, worldZ)) {
@@ -264,7 +267,7 @@ inline void addScatteredCoral(float worldX, float worldZ, std::size_t variantCou
       worldX, worldZ, rotation, scale, colonyStrength, seabed));
   ++result.totalCount;
 
-  if (result.totalCount >= kMaxTotalCorals) {
+  if (result.totalCount >= result.maxCount) {
     return;
   }
   if (coralPatchNoise(worldX + 0.3f, worldZ + 0.3f) < 0.72f) {
@@ -310,7 +313,7 @@ inline void scatterCoralsAcrossScene(std::size_t variantCount,
        gridX += kScatterGridStep) {
     for (float gridZ = -kSceneHalfExtent; gridZ <= kSceneHalfExtent;
          gridZ += kScatterGridStep) {
-      if (result.totalCount >= kMaxTotalCorals) {
+      if (result.totalCount >= result.maxCount) {
         return;
       }
 
@@ -347,9 +350,14 @@ inline void scatterCoralsAcrossScene(std::size_t variantCount,
 
 inline CoralPlacementResult
 generateNoiseCoralPlacements(std::size_t variantCount,
-                             const SeabedParams &seabed) {
+                             const SeabedParams &seabed, float density = 1.0f) {
   CoralPlacementResult result;
   result.perVariantTransforms.resize(variantCount);
+  // scale both the total coral budget and the colony count by density so a
+  // higher value packs in more reef while density 1.0 reproduces the baseline
+  result.maxCount = std::max<std::size_t>(
+      1, static_cast<std::size_t>(kMaxTotalCorals * density));
+  const float maxColonies = std::max(1.0f, kMaxNearReefColonies * density);
 
   std::vector<std::pair<glm::vec2, float>> nearCandidates;
   nearCandidates.reserve(64);
@@ -357,8 +365,8 @@ generateNoiseCoralPlacements(std::size_t variantCount,
                           nearCandidates, seabed);
 
   std::vector<glm::vec2> colonyCenters;
-  colonyCenters.reserve(static_cast<std::size_t>(kMaxNearReefColonies));
-  pickColonyCenters(nearCandidates, kMaxNearReefColonies, colonyCenters);
+  colonyCenters.reserve(static_cast<std::size_t>(maxColonies));
+  pickColonyCenters(nearCandidates, maxColonies, colonyCenters);
 
   if (colonyCenters.empty()) {
     colonyCenters.emplace_back(kShipAnchorX + 8.0f, kShipAnchorZ + 4.0f);
@@ -366,7 +374,7 @@ generateNoiseCoralPlacements(std::size_t variantCount,
   }
 
   for (const glm::vec2 &center : colonyCenters) {
-    if (result.totalCount >= kMaxTotalCorals) {
+    if (result.totalCount >= result.maxCount) {
       break;
     }
     addReefColony(center, variantCount, seabed, result);

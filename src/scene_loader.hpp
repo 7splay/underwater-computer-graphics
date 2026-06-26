@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <functional>
 #include <iostream>
-#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -12,7 +11,6 @@
 #include <glm/glm.hpp>
 
 #include "coral_placement.hpp"
-#include "camera.hpp"
 #include "lod_system.hpp"
 #include "models.hpp"
 #include "seaweed_cluster.hpp"
@@ -39,7 +37,8 @@ struct SceneLoadResult {
 };
 
 inline SceneLoadResult
-loadSceneModels(const std::function<void()> &onProgress = {}) {
+loadSceneModels(const std::function<void()> &onProgress = {},
+                float density = 1.0f) {
   namespace fs = std::filesystem;
 
   auto tick = [&]() {
@@ -48,8 +47,12 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
     }
   };
 
-  constexpr std::size_t kFishInstancesPerModel = 40;
-  constexpr std::size_t kFishesInstancesPerModel = 24;
+  // base per-model fish budgets, scaled by the object-density entry parameter
+  const auto scaled = [density](std::size_t base) {
+    return std::max<std::size_t>(1, static_cast<std::size_t>(base * density));
+  };
+  const std::size_t kFishInstancesPerModel = scaled(40);
+  const std::size_t kFishesInstancesPerModel = scaled(24);
   const SeabedParams &seabed = kSceneSeabed;
 
   std::vector<fs::path> modelFiles;
@@ -109,13 +112,14 @@ loadSceneModels(const std::function<void()> &onProgress = {}) {
 
   CoralPlacementResult coralPlacements{};
   if (!coralFiles.empty()) {
-    coralPlacements = generateNoiseCoralPlacements(coralFiles.size(), seabed);
+    coralPlacements =
+        generateNoiseCoralPlacements(coralFiles.size(), seabed, density);
   }
 
   const Renderable clusterSeaweed = loadClusterSeaweed();
   if (clusterSeaweed.VAO != 0) {
     const std::vector<glm::mat4> clusterTransforms =
-        generateClusterSeaweedPlacements(seabed);
+        generateClusterSeaweedPlacements(seabed, density);
     std::cout << "Placed " << clusterTransforms.size()
               << " cluster seaweed using noise scattering." << std::endl;
     if (!clusterTransforms.empty()) {

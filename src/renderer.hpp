@@ -129,29 +129,47 @@ inline ModelProgram createModelProgram() {
   return program;
 }
 
+// 1x1 white texture used whenever a renderable has no diffuse map, so every
+// sampler unit always points at a complete texture. without this, binding 0
+// makes macOS log "unit 0 ... unloadable ... using zero texture"
+inline GLuint whiteFallbackTexture() {
+  static GLuint tex = 0;
+  if (tex == 0) {
+    const unsigned char white[3] = {255u, 255u, 255u};
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                 white);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  }
+  return tex;
+}
+
 inline void bindRenderableTextures(const Renderable &renderable) {
+  const GLuint base =
+      renderable.texture != 0 ? renderable.texture : whiteFallbackTexture();
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, renderable.texture);
+  glBindTexture(GL_TEXTURE_2D, base);
 
   glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, renderable.normalTexture != 0
-                                  ? renderable.normalTexture
-                                  : renderable.texture);
+  glBindTexture(GL_TEXTURE_2D,
+                renderable.normalTexture != 0 ? renderable.normalTexture : base);
 
   glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_2D, renderable.roughnessTexture != 0
                                   ? renderable.roughnessTexture
-                                  : renderable.texture);
+                                  : base);
 
   glActiveTexture(GL_TEXTURE3);
   glBindTexture(GL_TEXTURE_2D, renderable.metallicTexture != 0
                                   ? renderable.metallicTexture
-                                  : renderable.texture);
+                                  : base);
 
   glActiveTexture(GL_TEXTURE5);
   glBindTexture(GL_TEXTURE_2D, renderable.opacityTexture != 0
                                   ? renderable.opacityTexture
-                                  : renderable.texture);
+                                  : base);
 }
 
 inline void drawRenderable(const ModelProgram &program,
