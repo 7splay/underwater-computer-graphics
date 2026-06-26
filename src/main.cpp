@@ -46,6 +46,10 @@ int main(int argc, char **argv) {
     return -1;
   }
 
+  // VSync: cap to display refresh rate. gives a stable 60 FPS, no tearing, and
+  // lets the GPU idle between frames instead of running flat-out for nothing
+  glfwSwapInterval(1);
+
   init(window);
   renderLoop(window);
   shutdown(window);

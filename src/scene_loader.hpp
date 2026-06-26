@@ -123,11 +123,14 @@ loadSceneModels(const std::function<void()> &onProgress = {},
     std::cout << "Placed " << clusterTransforms.size()
               << " cluster seaweed using noise scattering." << std::endl;
     if (!clusterTransforms.empty()) {
+      // seaweed skips the shadow pass: alpha-cutout depth writes are the most
+      // expensive per-fragment work in the shadow map, and the thin blades
+      // cast no visible shadow on sand anyway
       LodInstancedGroup group = createLodInstancedGroup(
-          clusterSeaweed, clusterTransforms, 16.0f, 50.0f, 1.2f, 1.6f, true);
-          group.low.useOpacityCutout = false;
-          group.low.useAlphaCutout  = false;
-          scene.groups.push_back(std::move(group));
+          clusterSeaweed, clusterTransforms, 16.0f, 50.0f, 1.2f, 1.6f, false);
+      group.low.useOpacityCutout = false;
+      group.low.useAlphaCutout  = false;
+      scene.groups.push_back(std::move(group));
     }
   }
 
@@ -151,8 +154,8 @@ loadSceneModels(const std::function<void()> &onProgress = {},
       for (const Renderable &mesh : baseMeshes) {
         LodInstancedGroup group = createLodInstancedGroup(
             mesh, transforms, 18.0f, 40.0f, 0.75f, 0.9f, true);
-            group.low.useOpacityCutout = false;
-            group.low.useAlphaCutout   = false;
+        group.low.useOpacityCutout = false;
+        group.low.useAlphaCutout   = false;
         scene.groups.push_back(std::move(group));
       }
     }

@@ -120,7 +120,8 @@ float spotlightIntensity(vec3 worldPos) {
     return cone * distAttn;
 }
 
-// 12-tap poisson-disk PCF using hardware depth compare for soft edges
+// 4-tap PCF using hardware depth compare. kept small (12 taps ran in every
+// visible fragment and dominated the lit-pass cost; 4 still softens edges)
 float shadowFactor(vec3 normal) {
     if (uShadowEnabled == 0) return 1.0;
 
@@ -130,28 +131,23 @@ float shadowFactor(vec3 normal) {
         return 1.0;
     }
 
-    // slope-scaled bias to avoid acne; small because the wider near plane
-    // gives enough depth precision to keep real cast shadows intact
+    // slope-scaled bias to avoid acne
     vec3 L = normalize(uFlashPos - vWorldPos);
     float NdotL = max(dot(normalize(normal), L), 0.0);
     float bias = max(0.0015 * (1.0 - NdotL), 0.0004);
 
     vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0));
     float spread = 1.5 * texelSize.x;
-    const vec2 poisson[12] = vec2[12](
-        vec2(-0.326212, -0.405805), vec2(-0.840297, -0.073629),
-        vec2(-0.695260,  0.457058), vec2(-0.203280,  0.620531),
-        vec2( 0.962340, -0.194201), vec2( 0.473434, -0.480297),
-        vec2( 0.510442,  0.047628), vec2( 0.510442,  0.980297),
-        vec2(-0.230442, -0.880297), vec2( 0.230442, -0.880297),
-        vec2( 0.530442,  0.760297), vec2(-0.530442,  0.760297)
+    const vec2 offsets[4] = vec2[4](
+        vec2(-0.5, -0.5), vec2( 0.5, -0.5),
+        vec2(-0.5,  0.5), vec2( 0.5,  0.5)
     );
     float shadow = 0.0;
-    for (int i = 0; i < 12; ++i) {
-        vec2 uv = proj.xy + poisson[i] * spread;
+    for (int i = 0; i < 4; ++i) {
+        vec2 uv = proj.xy + offsets[i] * spread;
         shadow += texture(uShadowMap, vec3(uv, proj.z - bias));
     }
-    return shadow / 12.0;
+    return shadow / 4.0;
 }
 
 void main() {

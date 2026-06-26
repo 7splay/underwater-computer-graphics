@@ -36,8 +36,8 @@ std::vector<PatrolLoop> patrols;
 Renderable sandRenderable;
 Renderable baitMesh;  // worm model drawn at each active bait position
 
-// object-density entry parameter (set from argv in main): scales how many
-// corals, seaweed and fish are generated. 1.0 = default scene
+  // object-density entry parameter (set from argv in main): scales how many
+  // corals, seaweed and fish are generated. 1.0 = default scene
 float objectDensity = 1.0f;
 
 // debug full-scene light toggle (L key): flattens ambient so the scene can be
@@ -93,7 +93,7 @@ void initModel(GLFWwindow *window) {
 
   modelProgram = createModelProgram();
   shadowProgram = createShadowProgram();
-  shadowMap = createShadowMap(1024, 1024);
+  shadowMap = createShadowMap(512, 512);
   goggles = createGoggles();
 
   SceneLoadResult sceneLoad = loadSceneModels(
@@ -360,6 +360,7 @@ void renderScene(GLFWwindow *window) {
   glBindTexture(GL_TEXTURE_2D, shadowMap.depthTexture);
 
   drawRenderable(modelProgram, sandRenderable);
+  // TEMP: skip static + LOD to isolate the bottleneck
   for (const Renderable &renderable : lodScene.staticRenderables) {
     drawRenderable(modelProgram, renderable);
   }
