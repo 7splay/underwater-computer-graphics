@@ -4,7 +4,7 @@
 
 ## Chosen methods
 
-- [x] **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing; each instance picks one of three LOD tiers (HIGH / MED / LOW billboard) based on camera distance.
+- [x] **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing; each instance picks one of three LOD tiers based on camera distance. Corals ship three pre-decimated Blender meshes per variant (HIGH ~50-70k tris, MED ~3-5k, LOW ~500-700) for clean edge-collapse transitions instead of procedural triangle dropping. Seaweed and distant corals fall back to camera-facing billboards.
 - [x] **B14 — Simple creature animation state machine:** each fish has `SWIM` / `FLEE` / `CHASE` states with transitions driven by flashlight ray hits and bait proximity.
 
 ## Mandatory methods
@@ -12,7 +12,7 @@
 - [x] **Normal mapping** — sand seabed and coral surfaces, tangent-space TBN.
 - [x] **PBR lighting** — metallic/roughness materials for sand, coral, rock, fish.
 - [x] **Quaternion camera control** — first-person diver camera with quaternion mouse look, pitch clamp, WASD/vertical movement, and smoothed velocity.
-- [x] **Shadow mapping** — flashlight spotlight depth map with 12-tap Poisson-disk PCF and slope-scaled bias.
+- [x] **Shadow mapping** — flashlight spotlight depth map with 4-tap PCF and slope-scaled bias. Fish and corals cast shadows; seaweed is excluded from the depth pass since its alpha-cutout blades cast no visible shadow on sand.
 - [x] **Parallel Transport Frames** — stable fish orientation along closed Catmull-Rom patrol loops around coral clusters.
 - [x] **Underwater skybox/cubemap** — blue-green gradient, bright above, dark abyss below.
 
@@ -112,4 +112,14 @@ The executable takes an optional density multiplier that scales how many corals,
 ./build/underwater-computer-graphics 2.0   # denser
 ```
 
-The window title shows the current FPS.
+The window title shows the current FPS. The app enables VSync (`glfwSwapInterval(1)`), so on a 60 Hz display it caps at a stable 60 FPS with no tearing.
+
+## Asset pipeline
+
+- `models/` — HIGH-tier meshes (full-detail). Fish, shark, worm, ship, and HIGH-tier corals live here.
+- `models_med/` — pre-decimated MED-tier coral meshes (Blender edge-collapse at ~0.05 ratio, ~3-5k tris each).
+- `models_low/` — pre-decimated LOW-tier coral meshes (~500-700 tris each). At distance, seaweed and far corals also fall back to camera-facing billboards.
+- `img/` — textures and normal maps, resolved by path convention (e.g. `coral2.obj` → `coral2.png`).
+- `shaders/` — GLSL vertex and fragment programs.
+
+Coral meshes were re-exported from Blender with `DECIMATE` (COLLAPSE) to recover GPU-bound FPS: the original AI-generated exports came in at 250k-350k triangles each and dropped the scene to ~16 FPS. Pre-decimating to three tiers brought it to a stable 60 FPS with no visible quality loss on small props.
