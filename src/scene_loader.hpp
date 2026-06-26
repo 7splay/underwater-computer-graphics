@@ -124,8 +124,10 @@ loadSceneModels(const std::function<void()> &onProgress = {},
               << " cluster seaweed using noise scattering." << std::endl;
     if (!clusterTransforms.empty()) {
       LodInstancedGroup group = createLodInstancedGroup(
-          clusterSeaweed, clusterTransforms, 16.0f, 24.0f, 1.15f, 2.4f, true);
-      scene.groups.push_back(std::move(group));
+          clusterSeaweed, clusterTransforms, 16.0f, 50.0f, 1.2f, 1.6f, true);
+          group.low.useOpacityCutout = false;
+          group.low.useAlphaCutout  = false;
+          scene.groups.push_back(std::move(group));
     }
   }
 
@@ -148,7 +150,9 @@ loadSceneModels(const std::function<void()> &onProgress = {},
       const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
       for (const Renderable &mesh : baseMeshes) {
         LodInstancedGroup group = createLodInstancedGroup(
-            mesh, transforms, 18.0f, 40.0f, 1.35f, 1.75f, true);
+            mesh, transforms, 18.0f, 40.0f, 0.75f, 0.9f, true);
+            group.low.useOpacityCutout = false;
+            group.low.useAlphaCutout   = false;
         scene.groups.push_back(std::move(group));
       }
     }
