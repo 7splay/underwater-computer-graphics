@@ -60,6 +60,7 @@ GLint skyboxProjLoc = -1;
 GLint skyboxSamplerLoc = -1;
 GLint skyboxSunDirLoc = -1;
 GLint skyboxSunColorLoc = -1;
+GLint skyboxFogColorLoc = -1;
 
 float deltaTime = 0.0f;
 float lastTime = 0.0f;
@@ -219,6 +220,7 @@ void initModel(GLFWwindow *window) {
   if (skyboxSunColorLoc >= 0) {
     glUniform3fv(skyboxSunColorLoc, 1, glm::value_ptr(underwater::kSunColor));
   }
+  skyboxFogColorLoc = glGetUniformLocation(skyboxProgram, "uFogColor");
 }
 
 void init(GLFWwindow *window) {
@@ -468,7 +470,13 @@ void renderScene(GLFWwindow *window) {
   // always surrounds the camera; vertex shader forces depth = 1.0, so we use
   // GL_LEQUAL to let it pass the depth test and never occlude geometry
   if (skyboxRenderable.indexCount > 0) {
+    // skybox: view matrix stripped of translation so the cube always surrounds
+    // the camera; vertex shader forces depth = w (so depth = 1.0 in NDC) which
+    // lets it pass GL_LEQUAL against the cleared depth and never occlude the
+    // geometry drawn before it. culling must be off because the camera sits
+    // INSIDE the cube, so every visible face is a back-face from outside
     glDepthFunc(GL_LEQUAL);
+    glDisable(GL_CULL_FACE);
     glUseProgram(skyboxProgram);
     glm::mat4 skyboxView = glm::mat4(glm::mat3(view));  // drop translation
     if (skyboxViewLoc >= 0) {
@@ -479,12 +487,16 @@ void renderScene(GLFWwindow *window) {
       glUniformMatrix4fv(skyboxProjLoc, 1, GL_FALSE,
                          glm::value_ptr(projection));
     }
+    if (skyboxFogColorLoc >= 0) {
+      glUniform3fv(skyboxFogColorLoc, 1, glm::value_ptr(underwater::kFogColor));
+    }
     glActiveTexture(GL_TEXTURE6);
     glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
     glBindVertexArray(skyboxRenderable.VAO);
     glDrawElements(GL_TRIANGLES, skyboxRenderable.indexCount, GL_UNSIGNED_INT,
                    nullptr);
     glBindVertexArray(0);
+    glEnable(GL_CULL_FACE);
     glDepthFunc(GL_LESS);
   }
 

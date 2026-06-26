@@ -18,10 +18,10 @@ inline glm::vec3 skyColorFromDir(const glm::vec3 &dir) {
     t = t * t * (3.0f - 2.0f * t);  // smoothstep
     glm::vec3 color = glm::mix(abyss, surface, t);
 
-    // soft, dim sun glow baked in (no hard disc, we're underwater)
+    // soft sun glow baked in: subtle so the sky reads naturally underwater
     const glm::vec3 sunDir = glm::normalize(underwater::kSunDirection);
     float cosA = glm::max(glm::dot(glm::normalize(dir), sunDir), 0.0f);
-    float glow = glm::pow(cosA, 12.0f) * 0.04f;
+    float glow = glm::pow(cosA, 8.0f) * 0.10f;
     color += underwater::kSunColor * glow;
     return color;
 }

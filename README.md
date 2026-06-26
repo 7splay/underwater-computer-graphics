@@ -2,9 +2,13 @@
 
 **Authors:** Oleksandr Prybylov, Anna Vasylchenko (group 12)
 
+A first-person diver scene set on a procedurally generated sandy seabed populated with coral reefs, seaweed, rocks, a sunken ship, and schools of fish that react to the player. The world is bounded by exponential depth fog and lit by a helmet-mounted flashlight with real-time shadows.
+
+![Scene overview](img/screenshots/scene.png)
+
 ## Chosen methods
 
-- [x] **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing; each instance picks one of three LOD tiers based on camera distance. Corals ship three pre-decimated Blender meshes per variant (HIGH ~50-70k tris, MED ~3-5k, LOW ~500-700) for clean edge-collapse transitions instead of procedural triangle dropping. Seaweed and distant corals fall back to camera-facing billboards.
+- [x] **A07 — Instanced rendering with LOD:** corals, rocks, seaweed, and fish are drawn with instancing. Each instance picks one of three LOD tiers based on camera distance — HIGH uses the full-detail mesh, MED a reduced-poly variant, and LOW a camera-facing billboard.
 - [x] **B14 — Simple creature animation state machine:** each fish has `SWIM` / `FLEE` / `CHASE` states with transitions driven by flashlight ray hits and bait proximity.
 
 ## Mandatory methods
@@ -12,9 +16,9 @@
 - [x] **Normal mapping** — sand seabed and coral surfaces, tangent-space TBN.
 - [x] **PBR lighting** — metallic/roughness materials for sand, coral, rock, fish.
 - [x] **Quaternion camera control** — first-person diver camera with quaternion mouse look, pitch clamp, WASD/vertical movement, and smoothed velocity.
-- [x] **Shadow mapping** — flashlight spotlight depth map with 4-tap PCF and slope-scaled bias. Fish and corals cast shadows; seaweed is excluded from the depth pass since its alpha-cutout blades cast no visible shadow on sand.
+- [x] **Shadow mapping** — flashlight spotlight depth map with PCF and slope-scaled bias. Fish and corals cast shadows on the seabed.
 - [x] **Parallel Transport Frames** — stable fish orientation along closed Catmull-Rom patrol loops around coral clusters.
-- [x] **Underwater skybox/cubemap** — blue-green gradient, bright above, dark abyss below.
+- [x] **Underwater skybox/cubemap** — procedural blue-green gradient cubemap, bright above (with a visible sun glow) and dark abyss below.
 
 ## Controls
 
@@ -32,10 +36,12 @@
 
 ## Interactions (B14 state machine)
 
+At least three runtime interactions independent of camera control, all affecting the scene:
+
 | # | Interaction | Effect |
 | --- | --- | --- |
 | 1 | `F` toggle flashlight | spotlight + shadow map on/off |
-| 2 | flashlight cone hits a fish | ray-sphere test within 18m → fish enters FLEE |
+| 2 | flashlight cone hits a fish | ray-sphere test within 18 m → fish enters FLEE |
 | 3 | Left mouse throws bait | projectile arc; once landed, nearby fish enter CHASE and seek the bait; consumed on contact |
 | 4 | `E` scare-all | every fish within 30 m of the camera enters FLEE with jittered timers |
 
@@ -73,9 +79,12 @@ Transition timing uses per-fish jittered delays and reaction windows so a school
 
 ## Screenshots
 
-_Add screenshots here once the final demo build is ready._
+![Bait feeding](img/screenshots/bait.png)
+
+![Sunken ship](img/screenshots/ship.png)
 
 ## Build and run instructions
+
 1. Clone the repository and enter root directory:
 ```bash
 git clone https://github.com/7splay/underwater-computer-graphics.git
@@ -112,14 +121,12 @@ The executable takes an optional density multiplier that scales how many corals,
 ./build/underwater-computer-graphics 2.0   # denser
 ```
 
-The window title shows the current FPS. The app enables VSync (`glfwSwapInterval(1)`), so on a 60 Hz display it caps at a stable 60 FPS with no tearing.
+The window title shows the current FPS. VSync is enabled, so on a 60 Hz display the app caps at a stable 60 FPS with no tearing.
 
-## Asset pipeline
+## Asset layout
 
-- `models/` — HIGH-tier meshes (full-detail). Fish, shark, worm, ship, and HIGH-tier corals live here.
-- `models_med/` — pre-decimated MED-tier coral meshes (Blender edge-collapse at ~0.05 ratio, ~3-5k tris each).
-- `models_low/` — pre-decimated LOW-tier coral meshes (~500-700 tris each). At distance, seaweed and far corals also fall back to camera-facing billboards.
+- `models/` — HIGH-tier meshes (full-detail): corals, fish, shark, worm, ship.
+- `models_med/` — MED-tier coral variants (reduced poly count).
+- `models_low/` — LOW-tier coral variants (lowest poly count); distant corals and seaweed also fall back to camera-facing billboards.
 - `img/` — textures and normal maps, resolved by path convention (e.g. `coral2.obj` → `coral2.png`).
 - `shaders/` — GLSL vertex and fragment programs.
-
-Coral meshes were re-exported from Blender with `DECIMATE` (COLLAPSE) to recover GPU-bound FPS: the original AI-generated exports came in at 250k-350k triangles each and dropped the scene to ~16 FPS. Pre-decimating to three tiers brought it to a stable 60 FPS with no visible quality loss on small props.
