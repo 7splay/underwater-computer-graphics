@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
 #endif
 
   GLFWwindow *window =
-      glfwCreateWindow(800, 600, "Underwater Scene", nullptr, nullptr);
+      glfwCreateWindow(1600, 1200, "Underwater Scene", nullptr, nullptr);
   if (window == nullptr) {
     std::cerr << "Failed to create GLFW window" << std::endl;
     glfwTerminate();

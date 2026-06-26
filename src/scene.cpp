@@ -341,7 +341,7 @@ void renderScene(GLFWwindow *window) {
     glUniform3f(modelProgram.flashColor, 1.0f, 0.96f, 0.85f);
   }
   if (modelProgram.flashIntensity >= 0) {
-    glUniform1f(modelProgram.flashIntensity, 2.0f);
+    glUniform1f(modelProgram.flashIntensity, 4.0f);
   }
   if (modelProgram.flashEnabled >= 0) {
     glUniform1i(modelProgram.flashEnabled, flashlightOn ? 1 : 0);
