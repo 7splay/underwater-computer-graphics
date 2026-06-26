@@ -51,18 +51,24 @@ target_link_libraries(perlin PRIVATE glm::glm)
 # Copy shaders/img/models whenever any file in those directories changes.
 # Implemented as a separate custom target so ninja actually re-runs the copy
 # even when no C++ source has been touched.
-file(GLOB_RECURSE SHADER_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/shaders/*)
-file(GLOB_RECURSE IMG_FILES     CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/img/*)
-file(GLOB_RECURSE MODEL_FILES   CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/models/*)
+file(GLOB_RECURSE SHADER_FILES    CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/shaders/*)
+file(GLOB_RECURSE IMG_FILES       CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/img/*)
+file(GLOB_RECURSE MODEL_FILES     CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/models/*)
+file(GLOB_RECURSE MODEL_MED_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/models_med/*)
+file(GLOB_RECURSE MODEL_LOW_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/models_low/*)
 
 add_custom_target(copy_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:underwater-computer-graphics>/shaders
+        ${CMAKE_SOURCE_DIR}/shaders     $<TARGET_FILE_DIR:underwater-computer-graphics>/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/img     $<TARGET_FILE_DIR:underwater-computer-graphics>/img
+        ${CMAKE_SOURCE_DIR}/img         $<TARGET_FILE_DIR:underwater-computer-graphics>/img
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/models  $<TARGET_FILE_DIR:underwater-computer-graphics>/models
-    DEPENDS ${SHADER_FILES} ${IMG_FILES} ${MODEL_FILES}
+        ${CMAKE_SOURCE_DIR}/models      $<TARGET_FILE_DIR:underwater-computer-graphics>/models
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/models_med  $<TARGET_FILE_DIR:underwater-computer-graphics>/models_med
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/models_low  $<TARGET_FILE_DIR:underwater-computer-graphics>/models_low
+    DEPENDS ${SHADER_FILES} ${IMG_FILES} ${MODEL_FILES} ${MODEL_MED_FILES} ${MODEL_LOW_FILES}
     VERBATIM)
 
 add_dependencies(underwater-computer-graphics copy_assets)

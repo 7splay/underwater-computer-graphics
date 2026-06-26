@@ -135,27 +135,37 @@ loadSceneModels(const std::function<void()> &onProgress = {},
   }
 
   if (!coralFiles.empty()) {
-    for (std::size_t coralIndex = 0; coralIndex < coralFiles.size();
-         ++coralIndex) {
-      const fs::path &file = coralFiles[coralIndex];
+    for (std::size_t coralIdx = 0; coralIdx < coralFiles.size(); ++coralIdx) {
+      const fs::path &file = coralFiles[coralIdx];
       const std::vector<glm::mat4> &transforms =
-          coralPlacements.perVariantTransforms[coralIndex];
+          coralPlacements.perVariantTransforms[coralIdx];
       if (transforms.empty()) {
         continue;
       }
       // collect one anchor per coral variant (colony center) so scene.cpp can
-      // build a Catmull-Rom patrol loop around each colony. every-coral anchors
-      // would create ~110 patrol loops and overload the fish AI grid
-      if (!transforms.empty()) {
-        coralAnchors.push_back(glm::vec3(transforms.front()[3]));
-      }
+      // build a Catmull-Rom patrol loop around each colony
+      coralAnchors.push_back(glm::vec3(transforms.front()[3]));
 
-      const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
-      for (const Renderable &mesh : baseMeshes) {
-        LodInstancedGroup group = createLodInstancedGroup(
-            mesh, transforms, 18.0f, 40.0f, 0.75f, 0.9f, true);
-        group.low.useOpacityCutout = false;
-        group.low.useAlphaCutout   = false;
+      // Try to load matching MED and LOW meshes from dedicated folders.
+      // If they don't exist fall back to the high-poly mesh for that tier.
+      const std::string stem = file.filename().string();
+      const fs::path medPath  = fs::path("models_med")  / stem;
+      const fs::path lowPath  = fs::path("models_low")  / stem;
+
+      const std::vector<Renderable> &highMeshes = loadBaseMeshes(file);
+      const std::vector<Renderable> &medMeshes  =
+          fs::exists(medPath) ? loadBaseMeshes(medPath) : highMeshes;
+      const std::vector<Renderable> &lowMeshes  =
+          fs::exists(lowPath) ? loadBaseMeshes(lowPath) : medMeshes;
+
+      const std::size_t count = highMeshes.size();
+      for (std::size_t m = 0; m < count; ++m) {
+        const Renderable &highMesh = highMeshes[m];
+        const Renderable &medMesh  = m < medMeshes.size()  ? medMeshes[m]  : highMesh;
+        const Renderable &lowMesh  = m < lowMeshes.size()  ? lowMeshes[m]  : medMesh;
+
+        LodInstancedGroup group = createLodInstancedGroupFromMeshes(
+            highMesh, medMesh, lowMesh, transforms, 18.0f, 40.0f, true);
         scene.groups.push_back(std::move(group));
       }
     }
@@ -222,15 +232,6 @@ loadSceneModels(const std::function<void()> &onProgress = {},
     }
 
     if (isSharkModel(file)) {
-      const std::vector<Renderable> &baseMeshes = loadBaseMeshes(file);
-      if (!baseMeshes.empty()) {
-        const std::vector<glm::mat4> transforms = {sharkPlacement(seabed)};
-        LodInstancedGroup group = createLodInstancedGroup(
-            baseMeshes.front(), transforms, 22.0f, 40.0f, 2.4f, 1.2f, false,
-            false, 3, 8);
-        scene.groups.push_back(std::move(group));
-      }
-      ++backgroundIndex;
       continue;
     }
 

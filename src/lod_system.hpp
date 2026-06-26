@@ -99,6 +99,25 @@ createLodInstancedGroup(const Renderable &baseMesh,
   return group;
 }
 
+// Creates a LOD group where each tier uses a pre-built external mesh instead
+// of algorithmically decimated or billboard geometry.
+inline LodInstancedGroup
+createLodInstancedGroupFromMeshes(const Renderable &highMesh,
+                                  const Renderable &medMesh,
+                                  const Renderable &lowMesh,
+                                  const std::vector<glm::mat4> &transforms,
+                                  float highDistance, float medDistance,
+                                  bool castsShadow = true) {
+  LodInstancedGroup group{};
+  initLodInstancedGroupTransforms(group, transforms, highDistance, medDistance,
+                                  1.0f, 1.0f, castsShadow);
+  group.lowUsesBillboard = false;
+  group.high = cloneMeshWithOwnVao(highMesh);
+  group.med  = cloneMeshWithOwnVao(medMesh);
+  group.low  = cloneMeshWithOwnVao(lowMesh);
+  return group;
+}
+
 inline LodInstancedGroup createLodInstancedMultiMeshGroup(
     const std::vector<Renderable> &baseMeshes,
     const std::vector<glm::mat4> &transforms, float highDistance,

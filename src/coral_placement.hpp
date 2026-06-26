@@ -13,6 +13,7 @@
 
 namespace {
 constexpr float kCoralMeshBaseY = 0.476f;
+constexpr float kCoralScaleMultiplier = 2.5f;
 constexpr float kGoldenAngle = 2.39996323f;
 
 constexpr float kDensityOffsetX = 137.31f;
@@ -166,8 +167,9 @@ inline void addReefColony(const glm::vec2 &center, std::size_t variantCount,
     const float roleBlend = static_cast<float>(i) /
                             std::max(static_cast<float>(coralCount - 1), 1.0f);
     const float scale =
-        (i == 0 ? 1.12f : 0.88f - roleBlend * 0.18f) +
-        (coralDetailNoise(worldX, worldZ, 6.0f) - 0.5f) * 0.10f;
+        ((i == 0 ? 1.12f : 0.88f - roleBlend * 0.18f) +
+         (coralDetailNoise(worldX, worldZ, 6.0f) - 0.5f) * 0.10f) *
+        kCoralScaleMultiplier;
     const float rotation =
         colonyAngle +
         (coralDetailNoise(worldX, worldZ, 8.0f) - 0.5f) * 0.65f;
@@ -259,7 +261,8 @@ inline void addScatteredCoral(float worldX, float worldZ, std::size_t variantCou
                                static_cast<float>(variantCount)) %
       variantCount;
   const float scale =
-      0.78f + coralDetailNoise(worldX, worldZ, 9.0f) * 0.28f;
+      (0.78f + coralDetailNoise(worldX, worldZ, 9.0f) * 0.28f) *
+      kCoralScaleMultiplier;
   const float rotation =
       coralDetailNoise(worldX, worldZ, 10.0f) * glm::two_pi<float>();
 
@@ -292,7 +295,8 @@ inline void addScatteredCoral(float worldX, float worldZ, std::size_t variantCou
                                 2.0f)) %
       variantCount;
   const float companionScale =
-      0.72f + coralDetailNoise(companionX, companionZ, 14.0f) * 0.22f;
+      (0.72f + coralDetailNoise(companionX, companionZ, 14.0f) * 0.22f) *
+      kCoralScaleMultiplier;
   const float companionRotation =
       coralDetailNoise(companionX, companionZ, 15.0f) * glm::two_pi<float>();
 
