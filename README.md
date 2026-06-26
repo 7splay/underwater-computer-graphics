@@ -116,23 +116,24 @@ cmake --build build
 
 You need a C++ compiler, CMake, and the same third-party libraries as on macOS. The easiest setup is **Visual Studio 2022** (with the **Desktop development with C++** workload) plus **vcpkg**.
 
+Visual Studio 2022 already includes CMake, so a separate CMake install is only needed if you want to build from the command line outside VS.
+
 1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/) with **Desktop development with C++**.
-2. Install [CMake](https://cmake.org/download/) and make sure `cmake` is on your `PATH`.
-3. Install and bootstrap [vcpkg](https://vcpkg.io/en/getting-started.html), for example:
+   In the installer, also enable **C++ CMake tools for Windows** (under the same workload).
+2. Install and bootstrap [vcpkg](https://vcpkg.io/en/getting-started.html), for example:
 ```powershell
 git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
 C:\vcpkg\bootstrap-vcpkg.bat
 ```
-4. Install the required libraries with vcpkg:
+3. Set a user environment variable `VCPKG_ROOT` pointing at your vcpkg folder, for example `C:\vcpkg`.
+   Open a new terminal or restart Visual Studio after changing environment variables.
+4. Configure and build from the project root in **x64 Native Tools Command Prompt for VS 2022** or PowerShell:
 ```powershell
-C:\vcpkg\vcpkg install glfw3:x64-windows glew:x64-windows assimp:x64-windows glm:x64-windows
+cmake --preset windows-vcpkg
+cmake --build --preset windows-vcpkg-release
 ```
-5. Configure and build from the project root in **x64 Native Tools Command Prompt for VS 2022** or PowerShell:
-```powershell
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -A x64
-cmake --build build --config Release
-```
-6. Run the compiled executable:
+   The repo includes a `vcpkg.json` manifest, so the first configure step downloads and builds `glfw3`, `glew`, `assimp`, and `glm` automatically.
+5. Run the compiled executable:
 ```powershell
 .\build\Release\underwater-computer-graphics.exe
 ```
@@ -140,6 +141,26 @@ cmake --build build --config Release
 The build copies `shaders/`, `img/`, and `models*` next to the executable automatically, so run the `.exe` from that output folder or pass its full path as shown above.
 
 If CMake cannot find OpenGL, install a recent GPU driver. If DLLs are missing at runtime, copy the `glew32.dll` and `assimp-vc*-mt.dll` files from your vcpkg `installed\x64-windows\bin` folder into the same directory as the executable.
+
+#### Open in Visual Studio 2022
+
+This project is a plain CMake app, so you do not convert it into a `.sln` manually. Visual Studio opens the folder and drives CMake for you.
+
+1. Complete the Windows prerequisites above (VS 2022, vcpkg, `VCPKG_ROOT`).
+2. In Visual Studio, choose **File > Open > Folder...** and select the cloned repository root (the folder that contains `CMakeLists.txt`).
+3. Wait for CMake configuration to finish. If prompted for a kit/preset, choose **Windows x64 (vcpkg)** (`windows-vcpkg` from `CMakePresets.json`).
+4. In the top toolbar, set the startup item to **underwater-computer-graphics.exe** and choose **Release** or **Debug**.
+5. Build with **Build > Build All** (`Ctrl+Shift+B`), then run/debug with **Debug > Start Debugging** (`F5`).
+
+Useful CMake targets in Solution Explorer:
+
+- `underwater-computer-graphics` — main scene executable
+- `perlin` — small Perlin noise example
+- `copy_assets` — copies shaders, textures, and models next to the executable
+
+If Visual Studio cannot find vcpkg, either set `VCPKG_ROOT` and reopen the folder, or copy `CMakeUserPresets.json.example` to `CMakeUserPresets.json` and edit the `CMAKE_TOOLCHAIN_FILE` path to match your machine.
+
+To change configure options later, use **Project > CMake Settings for underwater-computer-graphics** or edit `CMakePresets.json`.
 
 ### Object density (optional)
 

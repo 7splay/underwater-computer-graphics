@@ -1,4 +1,7 @@
 .vscode
+.vs
 .DS_Store
 .cache
 build
+out
+CMakeUserPresets.json
