@@ -85,33 +85,61 @@ Transition timing uses per-fish jittered delays and reaction windows so a school
 
 ## Build and run instructions
 
-1. Clone the repository and enter root directory:
+1. Clone the repository and enter the project root:
 ```bash
 git clone https://github.com/7splay/underwater-computer-graphics.git
 cd underwater-computer-graphics
 ```
-2. Install Xcode Command Line Tools if not installed already (used for compiling C/C++ code):
+
+### macOS
+
+2. Install Xcode Command Line Tools if they are not installed already:
 ```bash
 xcode-select --install
 ```
-3. Install brew if not installed already (used for downloading required libraries) - https://brew.sh/:
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-4. Install required libraries:
+3. Install [Homebrew](https://brew.sh/) if needed, then install the required libraries:
 ```bash
 brew install cmake glfw glew assimp glm
 ```
-5. Build the project:
+4. Build the project:
 ```bash
 mkdir -p build
 cmake -S . -B build
 cmake --build build
 ```
-6. Run the compiled executable:
+5. Run the compiled executable:
 ```bash
 ./build/underwater-computer-graphics
 ```
+
+### Windows
+
+You need a C++ compiler, CMake, and the same third-party libraries as on macOS. The easiest setup is **Visual Studio 2022** (with the **Desktop development with C++** workload) plus **vcpkg**.
+
+1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/) with **Desktop development with C++**.
+2. Install [CMake](https://cmake.org/download/) and make sure `cmake` is on your `PATH`.
+3. Install and bootstrap [vcpkg](https://vcpkg.io/en/getting-started.html), for example:
+```powershell
+git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+C:\vcpkg\bootstrap-vcpkg.bat
+```
+4. Install the required libraries with vcpkg:
+```powershell
+C:\vcpkg\vcpkg install glfw3:x64-windows glew:x64-windows assimp:x64-windows glm:x64-windows
+```
+5. Configure and build from the project root in **x64 Native Tools Command Prompt for VS 2022** or PowerShell:
+```powershell
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -A x64
+cmake --build build --config Release
+```
+6. Run the compiled executable:
+```powershell
+.\build\Release\underwater-computer-graphics.exe
+```
+
+The build copies `shaders/`, `img/`, and `models*` next to the executable automatically, so run the `.exe` from that output folder or pass its full path as shown above.
+
+If CMake cannot find OpenGL, install a recent GPU driver. If DLLs are missing at runtime, copy the `glew32.dll` and `assimp-vc*-mt.dll` files from your vcpkg `installed\x64-windows\bin` folder into the same directory as the executable.
 
 ### Object density (optional)
 

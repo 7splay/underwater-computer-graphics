@@ -3,6 +3,7 @@
 #include <GL/glew.h>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -12,6 +13,8 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <ImageIO/ImageIO.h>
+#else
+#include "stb_image.h"
 #endif
 
 inline GLuint createFallbackTexture() {
@@ -28,6 +31,73 @@ inline GLuint createFallbackTexture() {
   glBindTexture(GL_TEXTURE_2D, 0);
   return texture;
 }
+
+inline float sampleDiffuseHeight(const std::vector<unsigned char> &pixels,
+                                 int width, int height, int x, int y) {
+  x = std::clamp(x, 0, width - 1);
+  y = std::clamp(y, 0, height - 1);
+  const std::size_t index =
+      (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+       static_cast<std::size_t>(x)) *
+      4u;
+  const float red = static_cast<float>(pixels[index]) / 255.0f;
+  const float green = static_cast<float>(pixels[index + 1u]) / 255.0f;
+  const float blue = static_cast<float>(pixels[index + 2u]) / 255.0f;
+  return std::max(red, std::max(green, blue));
+}
+
+inline GLuint uploadRgbaTexture(const std::vector<unsigned char> &pixels,
+                                int width, int height, bool generateMipmaps) {
+  if (pixels.empty() || width <= 0 || height <= 0) {
+    return 0;
+  }
+
+  GLuint texture = 0;
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+               GL_UNSIGNED_BYTE, pixels.data());
+  if (generateMipmaps) {
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                    GL_LINEAR_MIPMAP_LINEAR);
+  } else {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  }
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  return texture;
+}
+
+#ifndef __APPLE__
+inline void downscaleRgbaNearest(const unsigned char *source, int sourceWidth,
+                                 int sourceHeight,
+                                 std::vector<unsigned char> &pixels,
+                                 int targetWidth, int targetHeight) {
+  pixels.assign(static_cast<std::size_t>(targetWidth * targetHeight * 4), 0u);
+  for (int y = 0; y < targetHeight; ++y) {
+    const int sourceY = y * sourceHeight / targetHeight;
+    for (int x = 0; x < targetWidth; ++x) {
+      const int sourceX = x * sourceWidth / targetWidth;
+      const std::size_t sourceIndex =
+          (static_cast<std::size_t>(sourceY) *
+               static_cast<std::size_t>(sourceWidth) +
+           static_cast<std::size_t>(sourceX)) *
+          4u;
+      const std::size_t targetIndex =
+          (static_cast<std::size_t>(y) * static_cast<std::size_t>(targetWidth) +
+           static_cast<std::size_t>(x)) *
+          4u;
+      pixels[targetIndex] = source[sourceIndex];
+      pixels[targetIndex + 1u] = source[sourceIndex + 1u];
+      pixels[targetIndex + 2u] = source[sourceIndex + 2u];
+      pixels[targetIndex + 3u] = source[sourceIndex + 3u];
+    }
+  }
+}
+#endif
 
 #ifdef __APPLE__
 inline GLuint loadTextureFromFile(const std::filesystem::path &texturePath) {
@@ -108,35 +178,12 @@ inline GLuint loadTextureFromFile(const std::filesystem::path &texturePath) {
   CGContextRelease(context);
   CGImageRelease(image);
 
-  GLuint texture = 0;
-  glGenTextures(1, &texture);
-  glBindTexture(GL_TEXTURE_2D, texture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(outW),
-               static_cast<GLsizei>(outH), 0, GL_RGBA, GL_UNSIGNED_BYTE,
-               pixels.data());
-  glGenerateMipmap(GL_TEXTURE_2D);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glBindTexture(GL_TEXTURE_2D, 0);
-
-  cache[key] = texture;
+  const GLuint texture =
+      uploadRgbaTexture(pixels, static_cast<int>(outW), static_cast<int>(outH), true);
+  if (texture != 0) {
+    cache[key] = texture;
+  }
   return texture;
-}
-
-inline float sampleDiffuseHeight(const std::vector<unsigned char> &pixels,
-                                 int width, int height, int x, int y) {
-  x = std::clamp(x, 0, width - 1);
-  y = std::clamp(y, 0, height - 1);
-  const std::size_t index =
-      (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
-       static_cast<std::size_t>(x)) *
-      4u;
-  const float red = static_cast<float>(pixels[index]) / 255.0f;
-  const float green = static_cast<float>(pixels[index + 1u]) / 255.0f;
-  const float blue = static_cast<float>(pixels[index + 2u]) / 255.0f;
-  return std::max(red, std::max(green, blue));
 }
 
 inline bool decodeDiffusePixels(const std::filesystem::path &texturePath,
@@ -209,33 +256,75 @@ inline bool decodeDiffusePixels(const std::filesystem::path &texturePath,
   outH = static_cast<int>(scaledH);
   return true;
 }
+#else
+inline bool decodeDiffusePixels(const std::filesystem::path &texturePath,
+                                std::vector<unsigned char> &pixels, int &outW,
+                                int &outH) {
+  if (!std::filesystem::exists(texturePath)) {
+    return false;
+  }
 
-inline GLuint uploadRgbaTexture(const std::vector<unsigned char> &pixels,
-                                int width, int height, bool generateMipmaps) {
-  if (pixels.empty() || width <= 0 || height <= 0) {
+  int width = 0;
+  int height = 0;
+  int channels = 0;
+  unsigned char *data = stbi_load(texturePath.string().c_str(), &width, &height,
+                                  &channels, STBI_rgb_alpha);
+  if (data == nullptr || width <= 0 || height <= 0) {
+    stbi_image_free(data);
+    return false;
+  }
+
+  constexpr int kMaxTexDim = 1024;
+  int targetWidth = width;
+  int targetHeight = height;
+  if (std::max(width, height) > kMaxTexDim) {
+    const float scale = static_cast<float>(kMaxTexDim) /
+                        static_cast<float>(std::max(width, height));
+    targetWidth = std::max(1, static_cast<int>(width * scale));
+    targetHeight = std::max(1, static_cast<int>(height * scale));
+    downscaleRgbaNearest(data, width, height, pixels, targetWidth, targetHeight);
+    stbi_image_free(data);
+  } else {
+    pixels.assign(static_cast<std::size_t>(width * height * 4), 0u);
+    std::copy(data, data + static_cast<std::size_t>(width * height * 4),
+              pixels.begin());
+    stbi_image_free(data);
+    targetWidth = width;
+    targetHeight = height;
+  }
+
+  outW = targetWidth;
+  outH = targetHeight;
+  return true;
+}
+
+inline GLuint loadTextureFromFile(const std::filesystem::path &texturePath) {
+  if (!std::filesystem::exists(texturePath)) {
     return 0;
   }
 
-  GLuint texture = 0;
-  glGenTextures(1, &texture);
-  glBindTexture(GL_TEXTURE_2D, texture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
-               GL_UNSIGNED_BYTE, pixels.data());
-  if (generateMipmaps) {
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                    GL_LINEAR_MIPMAP_LINEAR);
-  } else {
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  static std::unordered_map<std::string, GLuint> cache;
+  const std::string key = std::filesystem::absolute(texturePath).string();
+  auto found = cache.find(key);
+  if (found != cache.end() && found->second != 0) {
+    return found->second;
   }
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glBindTexture(GL_TEXTURE_2D, 0);
+
+  std::vector<unsigned char> pixels;
+  int width = 0;
+  int height = 0;
+  if (!decodeDiffusePixels(texturePath, pixels, width, height)) {
+    return 0;
+  }
+
+  const GLuint texture = uploadRgbaTexture(pixels, width, height, true);
+  if (texture != 0) {
+    cache[key] = texture;
+  }
   return texture;
 }
+#endif
 
-// Builds a tangent-space normal map from diffuse luminance (for cutout foliage).
 inline GLuint createNormalMapFromDiffuseFile(
     const std::filesystem::path &diffusePath, float strength = 3.0f) {
   if (!std::filesystem::exists(diffusePath)) {
@@ -297,10 +386,3 @@ inline GLuint createNormalMapFromDiffuseFile(
   }
   return texture;
 }
-#else
-inline GLuint loadTextureFromFile(const std::filesystem::path &) { return 0; }
-inline GLuint createNormalMapFromDiffuseFile(const std::filesystem::path &,
-                                             float = 3.0f) {
-  return 0;
-}
-#endif
