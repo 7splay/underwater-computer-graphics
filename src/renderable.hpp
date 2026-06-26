@@ -17,6 +17,9 @@ struct Renderable {
   bool useRoughnessMap = false;
   bool useMetallicMap = false;
   bool useArmMap = false;
+  // cutout-style meshes (fish fins, seaweed) discard low-alpha fragments
+  bool useAlphaTest = false;
+  float alphaCutoff = 0.5f;
   float normalStrength = 1.0f;
   float metallic = 0.0f;
   float roughness = 0.5f;

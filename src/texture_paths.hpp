@@ -92,6 +92,9 @@ inline std::filesystem::path resolveDiffuseTexturePath(
         {imgRoot / "fishes" / "Striped-Dottyback-Pseudochromis-sankeyi.jpg",
          imgRoot / "fishes" / "fishes.jpg"});
   }
+  if (stem == "worm") {
+    return firstExistingPath({imgRoot / "worm" / "LOMBRIC_COLOR_2.png"});
+  }
   return {};
 }
 
@@ -137,6 +140,9 @@ inline std::filesystem::path resolveNormalTexturePath(
   if (stem == "fish") {
     return firstExistingPath(
         {imgRoot / "fish" / "Tailor_low_DefaultMaterial_Normal.png"});
+  }
+  if (stem == "worm") {
+    return firstExistingPath({imgRoot / "worm" / "NORMAL_MAP_LP_OK.png"});
   }
   if (stem == "shark") {
     return firstExistingPath({imgRoot / "shark" / "Nurse_Shark_Quad_Normal.png",

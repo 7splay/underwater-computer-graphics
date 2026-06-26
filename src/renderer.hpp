@@ -19,6 +19,8 @@ struct ModelProgram {
   GLint useRoughnessMap = -1;
   GLint useMetallicMap = -1;
   GLint useArmMap = -1;
+  GLint useAlphaTest = -1;
+  GLint alphaCutoff = -1;
   GLint normalStrength = -1;
   GLint metallic = -1;
   GLint roughness = -1;
@@ -57,6 +59,8 @@ inline ModelProgram createModelProgram() {
   program.useRoughnessMap = uniformLocation(program.id, "uUseRoughnessMap");
   program.useMetallicMap = uniformLocation(program.id, "uUseMetallicMap");
   program.useArmMap = uniformLocation(program.id, "uUseArmMap");
+  program.useAlphaTest = uniformLocation(program.id, "uUseAlphaTest");
+  program.alphaCutoff = uniformLocation(program.id, "uAlphaCutoff");
   program.normalStrength = uniformLocation(program.id, "uNormalStrength");
   program.metallic = uniformLocation(program.id, "uMetallic");
   program.roughness = uniformLocation(program.id, "uRoughness");
@@ -164,6 +168,12 @@ inline void drawRenderable(const ModelProgram &program,
   }
   if (program.useArmMap >= 0) {
     glUniform1i(program.useArmMap, renderable.useArmMap ? 1 : 0);
+  }
+  if (program.useAlphaTest >= 0) {
+    glUniform1i(program.useAlphaTest, renderable.useAlphaTest ? 1 : 0);
+  }
+  if (program.alphaCutoff >= 0) {
+    glUniform1f(program.alphaCutoff, renderable.alphaCutoff);
   }
   if (program.normalStrength >= 0) {
     glUniform1f(program.normalStrength, renderable.normalStrength);

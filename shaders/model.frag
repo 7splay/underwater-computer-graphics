@@ -18,6 +18,10 @@ uniform float uNormalStrength;
 uniform float uMetallic;
 uniform float uRoughness;
 uniform vec3 uAlbedoTint;
+// alpha cutoff for cutout-style flat meshes (fish fins, seaweed). fragments
+// below this alpha are discarded so transparent regions don't render as blobs
+uniform float uAlphaCutoff = 0.5f;
+uniform bool uUseAlphaTest = false;
 uniform vec3 uCameraPos;
 uniform vec3 uFogColor;
 uniform float uFogDensity;
@@ -159,7 +163,15 @@ void main() {
         N = normalize(vTBN * tangentNormal);
     }
 
-    vec3 albedo = texture(uTexture, vTexCoord).rgb * uAlbedoTint;
+    vec4 texSample = texture(uTexture, vTexCoord);
+
+    // cutout-style meshes (fish, fins) bake the silhouette into the alpha channel
+    // so transparent pixels must be discarded before any lighting
+    if (uUseAlphaTest && texSample.a < uAlphaCutoff) {
+        discard;
+    }
+
+    vec3 albedo = texSample.rgb * uAlbedoTint;
 
     // PBR metallic-roughness: per-pixel maps or material uniforms
     float metallic = uMetallic;

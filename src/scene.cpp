@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "camera.hpp"
+#include "fish.hpp"
 #include "flashlight.hpp"
 #include "goggles.hpp"
 #include "models.hpp"
@@ -26,7 +27,22 @@ ShadowProgram shadowProgram{};
 ShadowMap shadowMap{};
 Goggles goggles{};
 std::vector<Renderable> renderables;
+std::vector<Fish> fish;
+std::vector<PatrolLoop> patrols;
 Renderable sandRenderable;
+Renderable baitMesh;  // worm model drawn at each active bait position
+
+// debug full-scene light toggle (L key): flattens ambient so the scene can be
+// inspected without the spotlight. independent of flashlight::enabled
+bool debugLight = false;
+// debug patrol loop drawing (P key): renders the Catmull-Rom loops as line
+// strips so you can see the paths fish are following
+bool debugPatrols = false;
+GLuint debugLineProgram = 0;
+GLint debugLineViewLoc = -1;
+GLint debugLineProjLoc = -1;
+GLint debugLineModelLoc = -1;
+GLint debugLineColorLoc = -1;
 
 GLuint skyboxProgram = 0;
 Renderable skyboxRenderable;
@@ -66,17 +82,64 @@ void initModel(GLFWwindow *window) {
   shadowMap = createShadowMap(1024, 1024);
   goggles = createGoggles();
 
-  renderables = loadSceneModels([window]() {
+  SceneLoadResult sceneLoad = loadSceneModels([window]() {
     if (window != nullptr) {
       glfwPollEvents();
     }
   });
+  renderables = std::move(sceneLoad.renderables);
+
+  // build closed patrol loops around coral clusters: 6 control points each,
+  // arranged as a wobbly circle above the anchor at cruise depth. loop Y is
+  // clamped above the actual seabed at each control point so scouts never
+  // dip underground and trigger seabed-clamp bouncing
+  patrols.clear();
+  for (const glm::vec3 &anchor : sceneLoad.coralAnchors) {
+    PatrolLoop loop;
+    loop.center = anchor;
+    loop.speed = 0.04f;
+    const std::size_t kPoints = 6;
+    for (std::size_t k = 0; k < kPoints; ++k) {
+      const float a = static_cast<float>(k) / static_cast<float>(kPoints) * glm::two_pi<float>();
+      const float r = 6.0f + 1.5f * std::sin(a * 2.0f + anchor.x);
+      const float px = anchor.x + std::cos(a) * r;
+      const float pz = anchor.z + std::sin(a) * r;
+      const float seabedY = sampleSeabedWorldHeight(px, pz, kSeabedParams);
+      // cruise 2-4m above the seabed with smooth variation, never below
+      const float variation = 2.0f * std::sin(a * 3.0f + anchor.z);
+      const float py = std::max(seabedY + 2.0f, anchor.y + 1.0f + variation);
+      loop.points.push_back(glm::vec3(px, py, pz));
+    }
+    patrols.push_back(loop);
+  }
+
+  // build fish entities, assigning each to its nearest patrol loop
+  for (const FishSpawn &spawn : sceneLoad.fishSpawns) {
+    if (spawn.renderableIndex >= renderables.size()) continue;
+    fish.push_back(makeFish(&renderables[spawn.renderableIndex], spawn.position,
+                            spawn.scale, spawn.patrolIndex));
+    fish.back().patrolT =
+        std::fmod(static_cast<float>(spawn.renderableIndex) * 0.17f, 1.0f);
+    syncFishModelMatrix(fish.back());
+  }
   sandRenderable = generateSand(128, 128, sandDensity, sandAmplitude,
                               sandSmoothness, sandModel);
 
   skyboxProgram = createProgram("shaders/skybox.vert", "shaders/skybox.frag");
   skyboxRenderable = makeSkybox();
   skyboxTexture = generateSkyboxCubemap();
+  // debug line shader for patrol loop visualisation (toggled with P)
+  debugLineProgram =
+      createProgram("shaders/debug_line.vert", "shaders/debug_line.frag");
+  debugLineViewLoc = glGetUniformLocation(debugLineProgram, "uView");
+  debugLineProjLoc = glGetUniformLocation(debugLineProgram, "uProjection");
+  debugLineModelLoc = glGetUniformLocation(debugLineProgram, "uModel");
+  debugLineColorLoc = glGetUniformLocation(debugLineProgram, "uColor");
+  // bait mesh: worm model drawn at each active bait position. loads through
+  // loadBaitMesh so it shares the same "Loading model:" log + progress callback
+  // as the rest of the scene. picking the largest sub-mesh discards Blender's
+  // debug junk (3D text labels + a plane) baked into worm.obj
+  baitMesh = loadBaitMesh("worm.obj", []() {});
   skyboxViewLoc = glGetUniformLocation(skyboxProgram, "uView");
   skyboxProjLoc = glGetUniformLocation(skyboxProgram, "uProjection");
   skyboxSamplerLoc = glGetUniformLocation(skyboxProgram, "uSkybox");
@@ -128,9 +191,9 @@ void renderScene(GLFWwindow *window) {
 
   // shadow pass uses the unbiased VP, lit pass uses the biased one
   const glm::mat4 lightViewProj =
-      flashlight::viewProjectionMatrix(1.0f, sceneTime);
+      flashlight::viewProjectionMatrix(1.0f);
   const glm::mat4 lightSpaceBiased =
-      flashlight::biasedLightSpaceMatrix(1.0f, sceneTime);
+      flashlight::biasedLightSpaceMatrix(1.0f);
   const bool flashlightOn = flashlight::enabled;
   if (flashlightOn) {
     bindShadowMapForWriting(shadowMap);
@@ -163,8 +226,8 @@ void renderScene(GLFWwindow *window) {
     glUniformMatrix4fv(modelProgram.lightSpace, 1, GL_FALSE,
                        glm::value_ptr(lightSpaceBiased));
   }
-  const glm::vec3 flashPos = flashlight::position(sceneTime);
-  const glm::vec3 flashDir = flashlight::direction(sceneTime);
+  const glm::vec3 flashPos = flashlight::position();
+  const glm::vec3 flashDir = flashlight::direction();
   if (modelProgram.flashPos >= 0) {
     glUniform3fv(modelProgram.flashPos, 1, glm::value_ptr(flashPos));
   }
@@ -197,6 +260,15 @@ void renderScene(GLFWwindow *window) {
   if (modelProgram.shadowEnabled >= 0) {
     glUniform1i(modelProgram.shadowEnabled, flashlightOn ? 1 : 0);
   }
+  // debug scene light (L key): lifts ambient so geometry is inspectable
+  // without depending on the flashlight cone. flashlight state is untouched.
+  // explicit reset on toggle-off is required because drawRenderable never
+  // re-sets ambient, so without this the previous frame's value persists
+  if (modelProgram.ambientColor >= 0) {
+    glUniform3fv(modelProgram.ambientColor, 1,
+                 debugLight ? glm::value_ptr(glm::vec3(0.7f, 0.78f, 0.85f))
+                            : glm::value_ptr(underwater::kAmbientColor));
+  }
   glActiveTexture(GL_TEXTURE4);
   glBindTexture(GL_TEXTURE_2D, shadowMap.depthTexture);
 
@@ -205,9 +277,85 @@ void renderScene(GLFWwindow *window) {
     drawRenderable(modelProgram, renderable);
   }
 
+  // bait: draw the worm mesh at each landed bait. on consume the bait is
+  // erased from the vector, so the worm disappears the instant a fish touches it
+  constexpr float kBaitMeshScale = 0.18f;
+  for (const Bait &b : baits) {
+    if (b.consumed) continue;
+    Renderable worm = baitMesh;
+    glm::mat4 m = glm::translate(glm::mat4(1.0f), b.position);
+    // worm body lies on its side on the seabed. amplitude of any motion is
+    // proportional to horizontal speed so it only wriggles when actually
+    // moving (sinking, drifting), not when settled. frequency is low so it
+    // reads as a body wave rather than vibration
+    const float horizSpeed =
+        glm::length(glm::vec2(b.velocity.x, b.velocity.z));
+    if (!b.landed && horizSpeed > 0.05f) {
+      const float yaw = std::atan2(b.velocity.z, b.velocity.x);
+      m = glm::rotate(m, yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+      // amplitude scales with speed (max ~6deg), frequency 5 Hz
+      const float amp = std::min(horizSpeed * 0.04f, 0.10f);
+      const float roll = std::sin(b.lifetime * 5.0f) * amp;
+      m = glm::rotate(m, roll, glm::vec3(1.0f, 0.0f, 0.0f));
+      m = glm::rotate(m, glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
+    } else {
+      m = glm::rotate(m, b.restYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+      m = glm::rotate(m, glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
+    }
+    // shrink as it gets eaten so the consumption is visible across the eat
+    // window. starts at full scale, reaches zero as eatProgress -> 1
+    float scale = kBaitMeshScale * (1.0f - b.eatProgress);
+    worm.model = glm::scale(m, glm::vec3(scale));
+    drawRenderable(modelProgram, worm);
+  }
+
+  // debug patrol loop drawing: toggled with P. samples each loop densely and
+  // renders it as a closed line strip so you can see what fish are following
+  if (debugPatrols && debugLineProgram != 0) {
+    glUseProgram(debugLineProgram);
+    glUniformMatrix4fv(debugLineViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(debugLineProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
+    glUniformMatrix4fv(debugLineModelLoc, 1, GL_FALSE,
+                       glm::value_ptr(glm::mat4(1.0f)));
+    // each loop gets a slightly different colour so overlaps are readable
+    for (std::size_t li = 0; li < patrols.size(); ++li) {
+      const PatrolLoop &loop = patrols[li];
+      if (loop.points.size() < 4) continue;
+      // dense sample of the Catmull-Rom curve for a smooth visual
+      constexpr int kSamples = 96;
+      std::vector<glm::vec3> line;
+      line.reserve(kSamples + 1);
+      for (int s = 0; s <= kSamples; ++s) {
+        const float t = static_cast<float>(s) / static_cast<float>(kSamples);
+        line.push_back(sampleLoop(loop, t));
+      }
+      GLuint vao, vbo;
+      glGenVertexArrays(1, &vao);
+      glGenBuffers(1, &vbo);
+      glBindVertexArray(vao);
+      glBindBuffer(GL_ARRAY_BUFFER, vbo);
+      glBufferData(GL_ARRAY_BUFFER,
+                   static_cast<GLsizeiptr>(line.size() * sizeof(glm::vec3)),
+                   line.data(), GL_STATIC_DRAW);
+      glEnableVertexAttribArray(0);
+      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
+                            nullptr);
+      // colour cycles through warm hues per loop
+      const float hue = static_cast<float>(li) * 0.27f;
+      const glm::vec3 color(std::sin(hue) * 0.5f + 0.5f,
+                            std::sin(hue + 2.0f) * 0.5f + 0.5f,
+                            std::sin(hue + 4.0f) * 0.5f + 0.5f);
+      glUniform3fv(debugLineColorLoc, 1, glm::value_ptr(color));
+      glDrawArrays(GL_LINE_STRIP, 0,
+                   static_cast<GLsizei>(line.size()));
+      glDeleteBuffers(1, &vbo);
+      glDeleteVertexArrays(1, &vao);
+    }
+  }
+
   // Skybox drawn last. View matrix is stripped of translation so the cube
   // always surrounds the camera; vertex shader forces depth = 1.0, so we use
-  // GL_LEQUAL to let it pass the depth test and never occlude geometry.
+  // GL_LEQUAL to let it pass the depth test and never occlude geometry
   if (skyboxRenderable.indexCount > 0) {
     glDepthFunc(GL_LEQUAL);
     glUseProgram(skyboxProgram);
@@ -229,7 +377,7 @@ void renderScene(GLFWwindow *window) {
     glDepthFunc(GL_LESS);
   }
 
-  // Goggle overlay: drawn last as a screen-space HUD pass. No depth, blended.
+  // Goggle overlay: drawn last as a screen-space HUD pass. No depth, blended
   drawGoggles(goggles, sceneTime);
 
   glfwSwapBuffers(window);
@@ -240,37 +388,52 @@ void processInput(GLFWwindow *window) {
     glfwSetWindowShouldClose(window, true);
   }
 
-  // Flashlight toggle on F key. Edge-detected so one keypress flips once.
+  // flashlight toggle on F (edge-detected)
   static bool fHeld = false;
   const bool fNow = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
-  if (fNow && !fHeld) {
-    flashlight::enabled = !flashlight::enabled;
-  }
+  if (fNow && !fHeld) flashlight::enabled = !flashlight::enabled;
   fHeld = fNow;
 
-  glm::vec3 inputDirection = glm::vec3(0.0f);
-  glm::vec3 independentInputDirection = glm::vec3(0.0f);
+  // debug full-scene light toggle on L (edge-detected): overrides flashlight so
+  // you can inspect geometry/material without the spotlight. useful for
+  // verifying bait meshes, fish states, prop placement in even lighting
+  static bool lHeld = false;
+  const bool lNow = glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS;
+  if (lNow && !lHeld) debugLight = !debugLight;
+  lHeld = lNow;
 
-  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-    inputDirection += glm::vec3(0.0f, 0.0f, -1.0f);
+  // debug patrol loop overlay on P (edge-detected): draws each Catmull-Rom
+  // patrol loop as a coloured line strip so the spline paths are visible
+  static bool pHeld = false;
+  const bool pNow = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
+  if (pNow && !pHeld) debugPatrols = !debugPatrols;
+  pHeld = pNow;
+
+  // scare-all on E (edge-detected): radial shockwave centered on the camera,
+  // wider than the flashlight cone
+  static bool eHeld = false;
+  const bool eNow = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+  if (eNow && !eHeld) scareAllFish(fish, cameraPosition);
+  eHeld = eNow;
+
+  // bait throw on LMB (edge-detected)
+  static bool lmbHeld = false;
+  const bool lmbNow = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  if (lmbNow && !lmbHeld) {
+    const glm::vec3 fwd = cameraOrientation * glm::vec3(0.0f, 0.0f, -1.0f);
+    throwBait(cameraPosition, glm::normalize(fwd));
   }
-  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-    inputDirection += glm::vec3(0.0f, 0.0f, 1.0f);
-  }
-  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-    inputDirection += glm::vec3(-1.0f, 0.0f, 0.0f);
-  }
-  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-    inputDirection += glm::vec3(1.0f, 0.0f, 0.0f);
-  }
-  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-    independentInputDirection += glm::vec3(0.0f, 1.0f, 0.0f);
-  }
-  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-    independentInputDirection += glm::vec3(0.0f, -1.0f, 0.0f);
-  }
-  updateCameraMovement(inputDirection, independentInputDirection, cameraSpeed,
-                       deltaTime);
+  lmbHeld = lmbNow;
+
+  glm::vec3 inputDirection(0.0f);
+  glm::vec3 independentInputDirection(0.0f);
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) inputDirection += glm::vec3(0.0f, 0.0f, -1.0f);
+  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) inputDirection += glm::vec3(0.0f, 0.0f, 1.0f);
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) inputDirection += glm::vec3(-1.0f, 0.0f, 0.0f);
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) inputDirection += glm::vec3(1.0f, 0.0f, 0.0f);
+  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) independentInputDirection += glm::vec3(0.0f, 1.0f, 0.0f);
+  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) independentInputDirection += glm::vec3(0.0f, -1.0f, 0.0f);
+  updateCameraMovement(inputDirection, independentInputDirection, cameraSpeed, deltaTime);
 }
 
 void processMouse(GLFWwindow *, double xPos, double yPos) {
@@ -302,6 +465,11 @@ void renderLoop(GLFWwindow *window) {
     lastTime = time;
 
     processInput(window);
+    updateFish(fish, deltaTime, time, patrols, flashlight::enabled,
+               flashlight::position());
+    // bait update runs after fish so the feeder count sees this frame's
+    // positions; worms shrink faster the more fish crowd them
+    updateBait(baits, deltaTime, fish);
     renderScene(window);
   }
 }

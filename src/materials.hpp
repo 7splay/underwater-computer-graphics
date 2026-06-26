@@ -12,8 +12,19 @@ inline bool isCoralModel(const std::filesystem::path &path) {
 
 inline bool isFishModel(const std::filesystem::path &path) {
   const std::string name = toLowerCopy(path.stem().string());
+  if (name.find("shark") != std::string::npos) {
+    return false;
+  }
   return name.find("fish") != std::string::npos ||
          name.find("fishes") != std::string::npos;
+}
+
+// returns true for any model that should be skipped entirely (not rendered)
+inline bool isSkippedModel(const std::filesystem::path &path) {
+  const std::string name = toLowerCopy(path.stem().string());
+  // worm is loaded manually as the bait mesh, never auto-placed in the scene
+  return name.find("shark") != std::string::npos ||
+         name.find("worm") != std::string::npos;
 }
 
 inline bool isShipModel(const std::filesystem::path &path) {
@@ -33,6 +44,10 @@ inline void applyMaterialPreset(const std::filesystem::path &modelPath,
     renderable.metallic = 0.04f;
     renderable.roughness = 0.42f;
     renderable.normalStrength = 1.0f;
+    // fish meshes are flat planes with alpha-cutout fins, discard transparent
+    // pixels so the silhouette reads cleanly without blobby transparent edges
+    renderable.useAlphaTest = true;
+    renderable.alphaCutoff = 0.5f;
     return;
   }
   if (isShipModel(modelPath)) {
@@ -40,10 +55,6 @@ inline void applyMaterialPreset(const std::filesystem::path &modelPath,
     renderable.roughness = 0.58f;
     renderable.albedoTint = glm::vec3(0.58f, 0.64f, 0.56f);
     return;
-  }
-  if (toLowerCopy(modelPath.stem().string()) == "shark") {
-    renderable.metallic = 0.08f;
-    renderable.roughness = 0.55f;
   }
 }
 
