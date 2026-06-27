@@ -247,6 +247,7 @@ void renderScene(GLFWwindow *window) {
   if (height == 0) {
     height = 1;
   }
+  glViewport(0, 0, width, height);
 
   glm::mat4 view = getViewMatrix();
   glm::mat4 projection = glm::perspective(

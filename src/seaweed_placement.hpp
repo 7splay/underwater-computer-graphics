@@ -24,7 +24,7 @@ inline glm::mat4 buildSeaweedTransform(float x, float z, float yRotation,
                                        float widthScale, float heightScale,
                                        const SeabedParams &seabed) {
   const float seabedY = sampleSeabedWorldHeight(x, z, seabed);
-  const float y = seabedY + 0.02f;
+  const float y = seabedY + 0.08f;
 
   glm::mat4 model = glm::mat4(1.0f);
   model = glm::translate(model, glm::vec3(x, y, z));

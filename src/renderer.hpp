@@ -238,6 +238,10 @@ inline void drawRenderable(const ModelProgram &program,
   const bool disableCull = renderable.isDoubleSided;
   if (disableCull) {
     glDisable(GL_CULL_FACE);
+    if (renderable.useAlphaCutout) {
+      glEnable(GL_POLYGON_OFFSET_FILL);
+      glPolygonOffset(-1.0f, -2.0f);
+    }
   }
 
   glBindVertexArray(renderable.VAO);
@@ -252,6 +256,9 @@ inline void drawRenderable(const ModelProgram &program,
                    nullptr);
   }
   if (disableCull) {
+    if (renderable.useAlphaCutout) {
+      glDisable(GL_POLYGON_OFFSET_FILL);
+    }
     glEnable(GL_CULL_FACE);
   }
 }
